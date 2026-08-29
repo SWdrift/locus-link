@@ -1,0 +1,179 @@
+package locus
+
+import (
+	"context"
+	"fmt"
+	"sort"
+	"time"
+)
+
+type RouteEvidence struct {
+	Status string         `json:"status"`
+	Links  []LinkEvidence `json:"links"`
+}
+
+type LinkEvidence struct {
+	LinkID      string       `json:"link_id"`
+	Status      string       `json:"status"`
+	Observation *Observation `json:"observation,omitempty"`
+}
+
+type ResolvedStep struct {
+	LinkID     string       `json:"link_id"`
+	Provider   string       `json:"provider"`
+	NativeHint NativeHint   `json:"native_hint"`
+	Evidence   LinkEvidence `json:"evidence"`
+}
+
+type ResolvedRoute struct {
+	CanonicalID     string         `json:"canonical_id"`
+	DerivedTarget   string         `json:"derived_target"`
+	DerivedProvides []string       `json:"derived_provides"`
+	EvidenceStatus  string         `json:"evidence_status"`
+	Steps           []ResolvedStep `json:"steps"`
+}
+
+type ResolveResult struct {
+	InputTarget string        `json:"input_target"`
+	Target      string        `json:"canonical_target"`
+	Capability  string        `json:"capability"`
+	Route       ResolvedRoute `json:"route"`
+}
+
+func (r *Registry) Resolve(ctx context.Context, targetRef, capability string, runtime RuntimeContext, providers *Providers, store *Store) (ResolveResult, error) {
+	target, err := r.ResolveEntity(targetRef)
+	if err != nil {
+		return ResolveResult{}, err
+	}
+	var candidates []ResolvedRoute
+	for _, route := range r.Routes {
+		candidate, applicable, err := r.resolveRoute(ctx, route, target, capability, runtime, providers, store)
+		if err != nil {
+			return ResolveResult{}, err
+		}
+		if applicable {
+			candidates = append(candidates, candidate)
+		}
+	}
+	if len(candidates) == 0 {
+		return ResolveResult{}, fmt.Errorf("no route provides %s to %s", capability, target)
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		left, right := evidenceRank(candidates[i].EvidenceStatus), evidenceRank(candidates[j].EvidenceStatus)
+		if left != right {
+			return left < right
+		}
+		return candidates[i].CanonicalID < candidates[j].CanonicalID
+	})
+	return ResolveResult{InputTarget: targetRef, Target: target, Capability: capability, Route: candidates[0]}, nil
+}
+
+func (r *Registry) resolveRoute(ctx context.Context, route *Route, target, capability string, runtime RuntimeContext, providers *Providers, store *Store) (ResolvedRoute, bool, error) {
+	if len(route.Steps) == 0 {
+		return ResolvedRoute{}, false, nil
+	}
+	last := r.Links[route.Steps[len(route.Steps)-1].Link]
+	if last.To != target {
+		return ResolvedRoute{}, false, nil
+	}
+	available := map[string]bool{}
+	result := ResolvedRoute{CanonicalID: route.CanonicalID, DerivedTarget: last.To}
+	for _, step := range route.Steps {
+		link := r.Links[step.Link]
+		if link.From != runtime.CurrentEntity {
+			return ResolvedRoute{}, false, nil
+		}
+		provider, ok := providers.Get(link.Provider)
+		if !ok {
+			return ResolvedRoute{}, false, fmt.Errorf("unsupported provider %s", link.Provider)
+		}
+		for _, issue := range provider.Validate(link) {
+			return ResolvedRoute{}, false, fmt.Errorf("%s", issue)
+		}
+		hint, err := provider.Render(link, runtime)
+		if err != nil {
+			return ResolvedRoute{}, false, err
+		}
+		observation, err := store.Latest(ctx, link.CanonicalID, runtime.Vantage)
+		if err != nil {
+			return ResolvedRoute{}, false, err
+		}
+		evidence := classifyLinkEvidence(link.CanonicalID, observation)
+		result.Steps = append(result.Steps, ResolvedStep{LinkID: link.CanonicalID, Provider: link.Provider, NativeHint: hint, Evidence: evidence})
+		for _, provided := range link.Provides {
+			available[provided] = true
+		}
+	}
+	if !available[capability] {
+		return ResolvedRoute{}, false, nil
+	}
+	for provided := range available {
+		result.DerivedProvides = append(result.DerivedProvides, provided)
+	}
+	sort.Strings(result.DerivedProvides)
+	result.EvidenceStatus = aggregateEvidence(result.Steps)
+	return result, true, nil
+}
+
+func classifyLinkEvidence(linkID string, observation *Observation) LinkEvidence {
+	status := "unknown"
+	if observation != nil {
+		if time.Now().After(observation.ExpiresAt) {
+			status = "stale"
+		} else {
+			status = observation.Status
+		}
+	}
+	return LinkEvidence{LinkID: linkID, Status: status, Observation: observation}
+}
+
+func aggregateEvidence(steps []ResolvedStep) string {
+	allSuccess, allObserved, hasStale := true, true, false
+	for _, step := range steps {
+		switch step.Evidence.Status {
+		case "failure":
+			return "failure"
+		case "success":
+		case "stale":
+			allSuccess = false
+			hasStale = true
+		default:
+			allSuccess = false
+			allObserved = false
+		}
+	}
+	if allSuccess {
+		return "success"
+	}
+	if allObserved && hasStale {
+		return "stale"
+	}
+	return "unknown"
+}
+
+func evidenceRank(status string) int {
+	switch status {
+	case "success":
+		return 0
+	case "unknown", "stale":
+		return 1
+	default:
+		return 2
+	}
+}
+
+func (r *Registry) RouteEvidence(ctx context.Context, route *Route, vantage string, store *Store) (RouteEvidence, error) {
+	result := RouteEvidence{}
+	var steps []ResolvedStep
+	for _, step := range route.Steps {
+		observation, err := store.Latest(ctx, step.Link, vantage)
+		if err != nil {
+			return result, err
+		}
+		evidence := classifyLinkEvidence(step.Link, observation)
+		result.Links = append(result.Links, evidence)
+		steps = append(steps, ResolvedStep{Evidence: evidence})
+	}
+	result.Status = aggregateEvidence(steps)
+	return result, nil
+}

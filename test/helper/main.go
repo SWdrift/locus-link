@@ -1,0 +1,28 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+func main() {
+	name := strings.ToLower(filepath.Base(os.Args[0]))
+	root := os.Getenv("LOCUS_SIM_ROOT")
+	state := ""
+	switch {
+	case strings.HasPrefix(name, "frpc"):
+		state = "frp-up"
+	case strings.HasPrefix(name, "ssh"):
+		state = "ssh-up"
+	default:
+		fmt.Fprintln(os.Stderr, "unknown simulated tool")
+		os.Exit(2)
+	}
+	if _, err := os.Stat(filepath.Join(root, state)); err != nil {
+		fmt.Fprintf(os.Stderr, "%s is unavailable\n", state)
+		os.Exit(1)
+	}
+	fmt.Printf("simulated %s ok\n", state)
+}

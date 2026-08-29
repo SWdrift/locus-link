@@ -1,0 +1,6 @@
+test/**/.venv/
+test/**/__pycache__/
+
+.kanban
+temp
+.VSCodeCounter

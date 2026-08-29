@@ -1,0 +1,163 @@
+package locus
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"time"
+
+	_ "modernc.org/sqlite"
+)
+
+type Observation struct {
+	ID         int64          `json:"id,omitempty"`
+	Subject    string         `json:"subject"`
+	Vantage    string         `json:"vantage"`
+	Status     string         `json:"status"`
+	ObservedAt time.Time      `json:"observed_at"`
+	ExpiresAt  time.Time      `json:"expires_at"`
+	Provider   string         `json:"provider"`
+	Evidence   map[string]any `json:"evidence,omitempty"`
+	Error      string         `json:"error,omitempty"`
+}
+
+type Store struct {
+	db   *sql.DB
+	path string
+}
+
+func DefaultStatePath() (string, error) {
+	if path := os.Getenv("LOCUS_STATE_PATH"); path != "" {
+		return filepath.Abs(path)
+	}
+	if runtime.GOOS == "windows" {
+		base := os.Getenv("LOCALAPPDATA")
+		if base == "" {
+			return "", errors.New("LOCALAPPDATA is not set")
+		}
+		return filepath.Join(base, "locus-link", "state.db"), nil
+	}
+	base := os.Getenv("XDG_STATE_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		base = filepath.Join(home, ".local", "state")
+	}
+	return filepath.Join(base, "locus-link", "state.db"), nil
+}
+
+func OpenStore(path string) (*Store, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, err
+	}
+	store := &Store{db: db, path: path}
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS observations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		subject TEXT NOT NULL,
+		vantage TEXT NOT NULL,
+		status TEXT NOT NULL,
+		observed_at TEXT NOT NULL,
+		expires_at TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		evidence TEXT NOT NULL,
+		error TEXT NOT NULL
+	); CREATE INDEX IF NOT EXISTS observations_subject_vantage ON observations(subject, vantage, observed_at DESC);`)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	return store, nil
+}
+
+func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Path() string { return s.path }
+
+func (s *Store) Append(ctx context.Context, observation Observation) (Observation, error) {
+	evidence, err := json.Marshal(observation.Evidence)
+	if err != nil {
+		return observation, err
+	}
+	result, err := s.db.ExecContext(ctx, `INSERT INTO observations(subject,vantage,status,observed_at,expires_at,provider,evidence,error) VALUES(?,?,?,?,?,?,?,?)`,
+		observation.Subject, observation.Vantage, observation.Status, observation.ObservedAt.Format(time.RFC3339Nano), observation.ExpiresAt.Format(time.RFC3339Nano), observation.Provider, string(evidence), observation.Error)
+	if err != nil {
+		return observation, err
+	}
+	observation.ID, _ = result.LastInsertId()
+	return observation, nil
+}
+
+func (s *Store) Latest(ctx context.Context, subject, vantage string) (*Observation, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT id,subject,vantage,status,observed_at,expires_at,provider,evidence,error FROM observations WHERE subject=? AND vantage=? ORDER BY observed_at DESC,id DESC LIMIT 1`, subject, vantage)
+	observation, err := scanObservation(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return observation, err
+}
+
+func (s *Store) AllLatest(ctx context.Context, subject string) ([]Observation, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT o.id,o.subject,o.vantage,o.status,o.observed_at,o.expires_at,o.provider,o.evidence,o.error FROM observations o JOIN (SELECT vantage,MAX(id) id FROM observations WHERE subject=? GROUP BY vantage) latest ON o.id=latest.id ORDER BY o.vantage`, subject)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var values []Observation
+	for rows.Next() {
+		value, err := scanObservation(rows)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, *value)
+	}
+	return values, rows.Err()
+}
+
+type scanner interface{ Scan(dest ...any) error }
+
+func scanObservation(row scanner) (*Observation, error) {
+	var value Observation
+	var observed, expires, evidence string
+	if err := row.Scan(&value.ID, &value.Subject, &value.Vantage, &value.Status, &observed, &expires, &value.Provider, &evidence, &value.Error); err != nil {
+		return nil, err
+	}
+	var err error
+	value.ObservedAt, err = time.Parse(time.RFC3339Nano, observed)
+	if err != nil {
+		return nil, err
+	}
+	value.ExpiresAt, err = time.Parse(time.RFC3339Nano, expires)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal([]byte(evidence), &value.Evidence); err != nil {
+		return nil, fmt.Errorf("invalid observation evidence: %w", err)
+	}
+	return &value, nil
+}
+
+func newObservation(link *Link, runtime RuntimeContext, provider string) Observation {
+	now := time.Now().UTC()
+	return Observation{Subject: link.CanonicalID, Vantage: runtime.Vantage, Status: "unknown", ObservedAt: now, ExpiresAt: now.Add(15 * time.Minute), Provider: provider}
+}
+
+func finishObservation(value Observation, err error) Observation {
+	if err == nil {
+		value.Status = "success"
+		value.Evidence = map[string]any{"probe": "safe"}
+		return value
+	}
+	value.Status = "failure"
+	value.Error = err.Error()
+	return value
+}
