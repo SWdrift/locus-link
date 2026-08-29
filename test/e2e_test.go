@@ -41,6 +41,7 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	writeProject(t, projectARegistry, "project.alpha", "workstation.dev-a", port)
 
 	projectB := filepath.Join(root, "projects", "beta")
+	mustMkdir(t, projectB)
 	projectBRegistry := filepath.Join(projectB, ".locus", "registry")
 	deviceA := filepath.Join(root, "devices", "dev-a")
 	mustMkdir(t, deviceA)
