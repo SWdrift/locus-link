@@ -1,0 +1,9 @@
+api_version: locus/v0
+type: link
+id: link.prod-salt
+from: {{WORKSTATION}}
+to: customer::host.prod-01
+provider: salt
+provides: [salt.ping]
+provider_data:
+  minion_id: customer-a-prod-01

@@ -1,0 +1,5 @@
+api_version: locus/v0
+type: entity
+id: host.prod-01
+kind: host
+name: Production Host

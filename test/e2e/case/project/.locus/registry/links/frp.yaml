@@ -1,0 +1,11 @@
+api_version: locus/v0
+type: link
+id: link.prod-frp
+from: {{WORKSTATION}}
+to: customer::frps.primary
+provider: frp-stcp
+provides: [tcp-forward.ssh]
+provider_data:
+  config: "{{FRPC_CONFIG}}"
+  local_host: 127.0.0.1
+  local_port: {{PORT}}

@@ -6,7 +6,8 @@
 - Tests MUST NOT read or modify user configuration, credentials, services, network state, or files outside the workspace.
 - External-tool behavior MUST be exercised with deterministic helper executables created under `temp/`; tests MUST NOT depend on installed FRP/SSH/Salt services.
 - Observation storage used by tests MUST be explicitly redirected to a path under the test workspace.
-- End-to-end fixtures and binaries under `temp/e2e-run/` MUST remain after tests for manual reproduction; a new run MAY replace that directory deterministically.
+- Reusable end-to-end declarations and simulated device state MUST live under `test/e2e/case/`; tests materialize them under `temp/e2e-run/`.
+- Generated fixtures, binaries, SQLite state, and resolved output under `temp/e2e-run/` MUST remain after tests for manual reproduction; a new run MAY replace that directory deterministically.
 
 ## Verification
 

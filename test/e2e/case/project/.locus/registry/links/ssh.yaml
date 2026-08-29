@@ -1,0 +1,13 @@
+api_version: locus/v0
+type: link
+id: link.prod-ssh
+from: {{WORKSTATION}}
+to: customer::host.prod-01
+provider: ssh
+requires: [tcp-forward.ssh]
+provides: [shell, exec]
+provider_data:
+  user: deploy
+  host: 127.0.0.1
+  port: {{PORT}}
+  credential_ref: secret://ssh/customer-a-prod

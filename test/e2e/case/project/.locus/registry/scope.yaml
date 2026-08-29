@@ -1,0 +1,9 @@
+api_version: locus/v0
+scope:
+  id: {{PROJECT_ID}}
+  kind: project
+imports:
+  - alias: customer
+    path: ../../../../environments/customer-a/.locus/registry
+bindings:
+  production-host: customer::host.prod-01

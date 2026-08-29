@@ -1,0 +1,4 @@
+api_version: locus/v0
+scope:
+  id: environment.customer-a
+  kind: environment
