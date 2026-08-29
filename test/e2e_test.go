@@ -19,7 +19,6 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	if err := os.RemoveAll(root); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	bin := filepath.Join(root, "bin")
 	mustMkdir(t, bin)
 
@@ -29,6 +28,7 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	goBuild(t, repository, helperExe, "./test/helper")
 	copyFile(t, helperExe, filepath.Join(bin, executableName("frpc")))
 	copyFile(t, helperExe, filepath.Join(bin, executableName("ssh")))
+	copyFile(t, helperExe, filepath.Join(bin, executableName("salt")))
 
 	listener, port := startEndpoint(t)
 	defer listener.Close()
@@ -47,6 +47,7 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	mustMkdir(t, deviceA)
 	mustWrite(t, filepath.Join(deviceA, "frp-up"), "up")
 	mustWrite(t, filepath.Join(deviceA, "ssh-up"), "up")
+	mustWrite(t, filepath.Join(deviceA, "salt-up"), "up")
 
 	statePath := filepath.Join(root, "state", "state.db")
 	env := append(os.Environ(),
@@ -81,6 +82,16 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	assertStringAt(t, status, "evidence", "status", "success")
 	after := runCLI(t, locusExe, projectA, env, resolveArgs...)
 	assertStringAt(t, after, "route", "evidence_status", "success")
+
+	saltResolveArgs := append([]string{"resolve", "production-host", "--capability", "salt.ping"}, common...)
+	saltBefore := runCLI(t, locusExe, projectA, env, saltResolveArgs...)
+	assertStringAt(t, saltBefore, "route", "evidence_status", "unknown")
+	saltCheck := runCLI(t, locusExe, projectA, env, append([]string{"check", "route.prod-salt"}, common...)...)
+	if observations, ok := saltCheck["observations"].([]any); !ok || len(observations) != 1 {
+		t.Fatalf("expected one Salt observation, got %#v", saltCheck)
+	}
+	saltAfter := runCLI(t, locusExe, projectA, env, saltResolveArgs...)
+	assertStringAt(t, saltAfter, "route", "evidence_status", "success")
 
 	betaCommon := []string{"--registry", projectBRegistry, "--from", "workstation.dev-b", "--vantage", "device-b", "--json"}
 	betaContext := runCLI(t, locusExe, projectB, env, append([]string{"context"}, betaCommon...)...)
@@ -148,7 +159,9 @@ func writeProject(t *testing.T, registry, scopeID, workstation string, port int)
 	mustWrite(t, filepath.Join(registry, "entities", "workstation.yaml"), fmt.Sprintf("api_version: locus/v0\ntype: entity\nid: %s\nkind: workstation\nname: Simulated Workstation\n", workstation))
 	mustWrite(t, filepath.Join(registry, "links", "frp.yaml"), fmt.Sprintf("api_version: locus/v0\ntype: link\nid: link.prod-frp\nfrom: %s\nto: customer::frps.primary\nprovider: frp-stcp\nprovides: [tcp-forward.ssh]\nprovider_data:\n  config: %s\n  local_host: 127.0.0.1\n  local_port: %d\n", workstation, filepath.ToSlash(filepath.Join(registry, "frpc.toml")), port))
 	mustWrite(t, filepath.Join(registry, "links", "ssh.yaml"), fmt.Sprintf("api_version: locus/v0\ntype: link\nid: link.prod-ssh\nfrom: %s\nto: customer::host.prod-01\nprovider: ssh\nrequires: [tcp-forward.ssh]\nprovides: [shell, exec]\nprovider_data:\n  user: deploy\n  host: 127.0.0.1\n  port: %d\n  credential_ref: secret://ssh/customer-a-prod\n", workstation, port))
+	mustWrite(t, filepath.Join(registry, "links", "salt.yaml"), fmt.Sprintf("api_version: locus/v0\ntype: link\nid: link.prod-salt\nfrom: %s\nto: customer::host.prod-01\nprovider: salt\nprovides: [salt.ping]\nprovider_data:\n  minion_id: customer-a-prod-01\n", workstation))
 	mustWrite(t, filepath.Join(registry, "routes", "shell.yaml"), "api_version: locus/v0\ntype: route\nid: route.prod-shell\nsteps:\n  - link: link.prod-frp\n  - link: link.prod-ssh\n")
+	mustWrite(t, filepath.Join(registry, "routes", "salt.yaml"), "api_version: locus/v0\ntype: route\nid: route.prod-salt\nsteps:\n  - link: link.prod-salt\n")
 	mustWrite(t, filepath.Join(registry, "frpc.toml"), "# simulated config\n")
 }
 

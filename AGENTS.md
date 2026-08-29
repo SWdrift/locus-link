@@ -4,8 +4,9 @@
 
 - All reads, writes, generated files, subprocess working directories, fixtures, and test state MUST remain inside this repository workspace.
 - Tests MUST NOT read or modify user configuration, credentials, services, network state, or files outside the workspace.
-- External-tool behavior MUST be exercised with deterministic helper executables created under `temp/`; tests MUST NOT depend on installed FRP/SSH services.
+- External-tool behavior MUST be exercised with deterministic helper executables created under `temp/`; tests MUST NOT depend on installed FRP/SSH/Salt services.
 - Observation storage used by tests MUST be explicitly redirected to a path under the test workspace.
+- End-to-end fixtures and binaries under `temp/e2e-run/` MUST remain after tests for manual reproduction; a new run MAY replace that directory deterministically.
 
 ## Verification
 

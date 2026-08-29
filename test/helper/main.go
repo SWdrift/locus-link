@@ -16,6 +16,8 @@ func main() {
 		state = "frp-up"
 	case strings.HasPrefix(name, "ssh"):
 		state = "ssh-up"
+	case strings.HasPrefix(name, "salt"):
+		state = "salt-up"
 	default:
 		fmt.Fprintln(os.Stderr, "unknown simulated tool")
 		os.Exit(2)

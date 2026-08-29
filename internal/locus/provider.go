@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"sort"
 	"strconv"
 	"time"
 )
@@ -24,6 +25,7 @@ type NativeHint struct {
 
 type Provider interface {
 	Name() string
+	Executable() string
 	Validate(link *Link) []string
 	Render(link *Link, runtime RuntimeContext) (NativeHint, error)
 	Probe(ctx context.Context, link *Link, runtime RuntimeContext) Observation
@@ -32,7 +34,7 @@ type Provider interface {
 type Providers struct{ values map[string]Provider }
 
 func NewProviders() *Providers {
-	values := []Provider{frpProvider{}, sshProvider{}}
+	values := []Provider{frpProvider{}, sshProvider{}, saltProvider{}}
 	registry := &Providers{values: map[string]Provider{}}
 	for _, value := range values {
 		registry.values[value.Name()] = value
@@ -43,18 +45,26 @@ func NewProviders() *Providers {
 func (p *Providers) Get(name string) (Provider, bool) { value, ok := p.values[name]; return value, ok }
 
 func (p *Providers) Available() []string {
+	seen := map[string]bool{}
 	var available []string
-	for _, executable := range []string{"frpc", "ssh"} {
+	for _, provider := range p.values {
+		executable := provider.Executable()
+		if seen[executable] {
+			continue
+		}
+		seen[executable] = true
 		if _, err := exec.LookPath(executable); err == nil {
 			available = append(available, executable)
 		}
 	}
+	sort.Strings(available)
 	return available
 }
 
 type frpProvider struct{}
 
-func (frpProvider) Name() string { return "frp-stcp" }
+func (frpProvider) Name() string       { return "frp-stcp" }
+func (frpProvider) Executable() string { return "frpc" }
 func (frpProvider) Validate(link *Link) []string {
 	return requireProviderFields(link, "config", "local_host", "local_port")
 }
@@ -82,7 +92,8 @@ func (frpProvider) Probe(ctx context.Context, link *Link, runtime RuntimeContext
 
 type sshProvider struct{}
 
-func (sshProvider) Name() string { return "ssh" }
+func (sshProvider) Name() string       { return "ssh" }
+func (sshProvider) Executable() string { return "ssh" }
 func (sshProvider) Validate(link *Link) []string {
 	return requireProviderFields(link, "user", "host", "port")
 }
@@ -118,6 +129,32 @@ func (sshProvider) Probe(ctx context.Context, link *Link, runtime RuntimeContext
 			if output, commandErr := command.CombinedOutput(); commandErr != nil {
 				err = fmt.Errorf("ssh config probe: %v: %s", commandErr, sanitizeOutput(output))
 			}
+		}
+	}
+	return finishObservation(observation, err)
+}
+
+type saltProvider struct{}
+
+func (saltProvider) Name() string       { return "salt" }
+func (saltProvider) Executable() string { return "salt" }
+func (saltProvider) Validate(link *Link) []string {
+	return requireProviderFields(link, "minion_id")
+}
+func (saltProvider) Render(link *Link, _ RuntimeContext) (NativeHint, error) {
+	minionID, err := providerString(link, "minion_id")
+	if err != nil {
+		return NativeHint{}, err
+	}
+	return NativeHint{Executable: "salt", Args: []string{minionID, "test.ping", "--out=json"}}, nil
+}
+func (saltProvider) Probe(ctx context.Context, link *Link, runtime RuntimeContext) Observation {
+	observation := newObservation(link, runtime, "salt")
+	hint, err := (saltProvider{}).Render(link, runtime)
+	if err == nil {
+		command := exec.CommandContext(ctx, hint.Executable, hint.Args...)
+		if output, commandErr := command.CombinedOutput(); commandErr != nil {
+			err = fmt.Errorf("salt test.ping: %v: %s", commandErr, sanitizeOutput(output))
 		}
 	}
 	return finishObservation(observation, err)
