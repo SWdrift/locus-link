@@ -92,7 +92,7 @@ CLI 输入为：
 
 每个候选输出规范 Route ID、由末 Link 得到的 target、排序后的 `derived_provides`、聚合证据，以及每个 step 的 Link ID、Provider、NativeHint、Link evidence。Resolve 只调用 `Provider.Validate/Render` 并读取 SQLite，绝不调用 `Provider.Probe`。
 
-Link evidence 取当前 `(subject=link-id, vantage)` 最新 Observation：不存在为 `unknown`，超过 `expires_at` 为 `stale`，否则沿用已存的 `success/failure`。Route 聚合优先级为：任一 failure → `failure`；全 success → `success`；其余若都有 Observation 且至少一个 stale → `stale`；否则 `unknown`。
+Link evidence 取当前 `(subject=link-id, vantage)` 最新 Observation：不存在为 `unknown`；非零 `expires_at` 已过期为 `stale`；没有显式期限或尚未过期时沿用已存的 `success/failure`。Route 聚合优先级为：任一 failure → `failure`；全 success → `success`；其余若都有 Observation 且至少一个 stale → `stale`；否则 `unknown`。
 
 CLI 对 `unresolved` 和 `ambiguous` 仍输出结构化结果，但退出码为 3。
 
@@ -108,9 +108,9 @@ Provider registry 仅注册以下三项：
 
 补充事实：
 
-- Provider 的字段校验先检查 key 存在，Render/Probe 再检查字符串和整数类型。`validate` 命令只做 Registry/Route 加载校验，不调用 Provider validation；Resolve 会调用，Probe 直接进入对应 Provider。
+- Registry 装载会确认 Provider 已注册，并调用对应 `Validate` 检查必填字段、字符串类型、非空值和 1–65535 端口范围；各 Probe 在 dial 或启动进程前再次执行相同校验。
 - TCP connect 自带 3 秒超时并受上层 context 限制。`probe --timeout` 默认 10 秒，Route 的全部 step 共用同一个 timeout；Provider 外部命令都通过该 context 取消。
-- 外部命令失败时保存退出错误和最多 256 bytes 的 combined output；成功输出不进入 Observation。
+- 外部命令的 stdout/stderr 不进入错误或 Observation；失败只保存操作名和 timeout、canceled、exit code 或 start failure 等稳定类别。
 - `context.runtime.available_tools` 只通过 PATH 查找 `frpc`、`ssh`、`salt` 后排序展示，不是 Resolve 的可用性门禁。
 - Probe 一个 Route 时按 step 顺序执行并逐条写 Observation，遇到首个 failure 即停止；失败结果退出码为 4。
 - `credential_ref` 只是 NativeHint 中的 opaque reference，当前不会读取或注入 Secret。
@@ -122,7 +122,7 @@ Observation 字段为 `subject`、`vantage`、`status`、`observed_at`、`expire
 
 - Store 是 append-only `observations` 表；索引覆盖 `(subject, vantage, observed_at DESC)`。新 Probe 不覆盖历史行。
 - 默认路径：Windows 为 `%LOCALAPPDATA%/locus-link/state.db`；其他平台优先 `$XDG_STATE_HOME/locus-link/state.db`，否则 `~/.local/state/locus-link/state.db`。`LOCUS_STATE_PATH` 可显式覆盖。
-- Probe 开始时使用 UTC 时间并设 15 分钟有效期；成功写 `status=success` 与 `evidence={"probe":"safe"}`，失败写 `status=failure` 和错误文本。每次 Probe 的成功或失败都会持久化。
+- Probe 开始时使用 UTC 时间并设 15 分钟有效期；FRP、SSH、Salt 分别写入 `frpc-config-and-tcp-connect`、`tcp-connect-and-ssh-config`、`salt-test-ping` evidence kind。声明错误在执行和 Append 前被拒绝；实际测量成功或失败才持久化。
 - `Latest` 按 subject 与 vantage 隔离，依 `observed_at DESC, id DESC` 取一条；stale 是读取时根据过期时间派生，不回写数据库。
 - `status <link>` 返回该 vantage 的最新 Link evidence；`status <route>` 聚合各 step 最新 evidence；无参数 `status` 汇总 Registry 内全部 Link 在该 vantage 下的 success/failure/stale/unknown 数量。
 
@@ -156,6 +156,8 @@ stateDiagram-v2
 
 `context`、`resolve`、`probe` 需要 `--from`；`resolve` 还需要 `--capability`。`context`、`resolve`、`probe` 接受 `--vantage`，`status` 单独接受 `--vantage`。各命令可用 `--registry` 覆盖发现结果。
 
+`validate`、`list`、`show` 只装载声明，不解析 runtime、PATH、vantage 或 Observation state；`context`、`resolve`、`probe`、`status` 分别按实际消费装配运行时或状态依赖。
+
 ## 7. 当前 E2E 基线
 
 唯一 workspace E2E 是 `TestWorkspaceEndToEnd`，由 `test/reproduce.ps1` 运行；测试重建 `temp/e2e-run/`，结束后保留二进制、具现化 Registry、SQLite 和 probe log。
@@ -175,17 +177,7 @@ E2E 已覆盖 `init`、严格命令参数、Registry 向上发现、validate、c
 
 | 公共契约 | 当前实现 | 影响 |
 |---|---|---|
-| 对象 `api_version` 必须为 `locus/v0` | manifest 会校验，对象只解码不校验 | 无效对象版本可能进入 Registry |
-| ID、alias、role 遵循规定字符集 | 当前只检查部分必填和唯一性 | 非规范 identity 可以被接受 |
-| Environment 不声明 imports/Project Binding | active Environment imports 会被拒绝；imported Environment 的 imports/bindings 未完整拒绝 | 非法 imported manifest 可能被接受 |
-| documentation ref 归一化并检查资源存在 | 当前仅原样保存 `{ref,title}` | `validate` 无法发现失效引用，Resolve 不返回资料 |
-| `validate` 检查 Provider 注册和完整 data 类型/取值 | Provider 注册、类型检查主要发生在 Resolve/Probe；Validate 多数只检查 key 存在 | 声明错误延迟为运行时错误 |
-| Provider port 必须为 1–65535 | 当前接受整数形态但不检查范围 | 非法端口可能通过声明校验 |
 | Resolve 返回 Binding 解释、target Entity facts 和 documentation refs | 当前只返回 input target、canonical target、Route、NativeHint 和 evidence | 公共 Resolve result 尚未完整实现 |
-| Safe Probe evidence 标识 probe kind 和测量范围 | 当前 success 统一保存 `{"probe":"safe"}` | evidence 不能精确说明证明范围 |
-| `expires_at` 可选；缺省不自动 stale | 当前零值时间会被判为 stale | 无显式过期时间的记录解释错误 |
-| 声明错误不形成 failure Observation | Probe 未统一先执行完整 Provider Validate | 非法 Provider data 可能被误记为现实 failure |
-| 进程诊断在进入错误/Observation 前按 Provider 语义脱敏 | 当前 `sanitizeOutput` 只截断 256 bytes | 短 credential/token 仍可能泄漏 |
 
 这些偏差是实现任务，不改变公共契约。修复后必须更新本表和 E2E 基线。
 

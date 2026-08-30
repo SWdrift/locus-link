@@ -12,12 +12,14 @@
 - Declaration 保存已知访问方式；Instance 保存本次具体访问；Observation 保存实际测量。三者不得互相覆盖。
 - 参数所有权：Entity 保存目标稳定事实；Link / Provider config 保存机制用法；Binding 保存角色映射；Runtime Context / Instance 保存调用时值。
 - Locus 只保存 Secret reference；Secret value 由 SSH Agent、Credential Manager、Vault、环境变量等外部机制负责。
+- Provider 外部进程的 stdout/stderr 属于不受信输入，不进入错误、Observation 或日志；当前诊断只保留操作名和稳定失败类别，未来只能增加 Provider 明确解析并列入白名单的非敏感字段。
 - v0 不建立 Capability 对象；`requires/provides` 是开放字符串与轻量 fold，当前校验显式 Route，未来为 capability flow、compilation 和 planning 保留语义空间。
 - Route 的 target 由最后一个 Link 的 `to` 推导，provides 由 ordered steps 累计推导；不重复声明 target/provides/priority/generic constraints。
 - Route 不要求严格节点连续。FRP→SSH 等链路表达前一步为后一步建立条件，不创建 localhost endpoint、session 或 tunnel Entity。
 - v0 只解析显式 Route，不做自动 ranking、path discovery 或选择；显式 Route → future compilation / instantiation 是连续演进，不是未来重写。
 - Observation 只记录 canonical Link subject + vantage；Route 状态实时聚合，不落库。Provider safe probe passed 不等于完整 capability 已被证明。
 - Documentation reference 属于 declaration graph，供 Agent progressive context disclosure；文档内容不覆盖结构化声明，也不参与 capability、Route 或 execution 语义。
+- Documentation reference 必须是相对路径，词法归一化和符号链接解析后都受限于所属 Scope Registry 的 `docs/`。
 - CLI、Agent 与未来 WebUI 共享同一个 Locus Core / truth source；初始 WebUI 可围绕 Graph、Status、Knowledge 做 read-oriented 视图。
 - Observation Store v0 是本机 SQLite，不建设 shared/global/remote Store abstraction。
 - CLI 当前外层 contract 是 `resolve / probe`；其余一级命令按 inspection 与 registry authoring 分层。
@@ -45,6 +47,10 @@
 - 已实现 FRP、SSH、Salt Provider：Validate、Render NativeHint、safe Probe；无通用 Execute。
 - FRP Probe 使用 `frpc verify` 和现有本地 endpoint；SSH Probe 使用 TCP 与 `ssh -G`；Salt Probe 只调用 `test.ping`。
 - Resolve 不启动 FRP、不建立 SSH session、不执行 Salt、不调用 Probe；Probe 只验证既有状态并追加 Link Observation。
+- Registry 装载会校验对象版本、identity 字符集、Environment 限制、documentation containment、Provider 注册及完整 Provider data；声明错误不进入 Probe 持久化。
+- Provider Probe 在 dial 或进程启动前重复执行 Validate；FRP、SSH、Salt Observation 分别记录具体测量 kind，外部进程失败不保存原始输出。
+- Observation 的零 `expires_at` 表示没有显式期限；只有非零且已过期的记录才派生为 stale。
+- `validate`、`list`、`show` 是 declaration-only 路径，不解析 PATH、runtime 或 Observation state。
 - `LOCUS_STATE_PATH` 可将测试 Store 定向到工作区；生产默认使用 OS 本机 state 目录。
 - 当前需要 Runtime Context 的命令要求显式 `--from`；未传 `--vantage` 时退化为 host-specific vantage。该易用性需由真实使用再评估。
 

@@ -64,13 +64,6 @@
 
 ## Task Board
 
-### Ready — Correctness and Safety
-
-- [ ] 统一声明静态校验：校验对象 `api_version`、ID/role/alias 格式、imported Environment 约束、documentation reference，并让 `validate` 覆盖 Provider 注册与完整 `provider_data` 类型/取值。
-- [ ] Probe 前执行完整 Provider Validate；声明非法或 Provider 不受支持时返回声明错误，不执行测量、不写 failure Observation。
-- [ ] 将 Provider 外部进程诊断改为结构化安全摘要；不能只截断 stdout/stderr，必须防止 credential、token 和敏感配置进入错误或 Observation。
-- [ ] 补齐 Observation 的 `evidence.kind` 与实际测量范围，并修正无 `expires_at` 时被判为 stale 的语义；增加对应 Store/Resolve 测试。
-
 ### Next Vertical Slice — PostgreSQL
 
 - [ ] 由 `production-db` 案例冻结最小 Entity stable facts，不引入万能 Connection/property bag。
@@ -83,9 +76,8 @@
 - [ ] 用真实 Gitea + FRP + Worker CI/CD fixture 验证显式 deploy Route；先确认当前 applicability 阻塞点，再决定最小 step input/output 语义。
 - [ ] PostgreSQL 与 Gitea 案例稳定后，冻结 CLI、Agent 与 read-oriented WebUI 共用的读取 contract。
 
-### Structural Cleanup
+### Deferred Structural Cleanup
 
-- [ ] 拆分 `CLI.load` 的 declaration-only 与 runtime/store 装配，使 `validate/list/show` 不再无意义地探测 PATH 或依赖 Observation state path。
 - [ ] 只在上述 slices 形成明确变化轴后重构 `internal/locus` package；不先按 declaration/Registry/CLI/Provider 预建目录或接口。
 
 各任务的代码证据和公共契约偏差统一维护在 [`documents/current-architecture.md`](documents/current-architecture.md) 的“公共契约符合度”中；Task Board 只保留可执行修改项。
