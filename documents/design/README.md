@@ -1,50 +1,28 @@
 # Locus Link 设计文档
 
-本目录集中维护已经确定、需要跨任务复用的 Locus Link 设计，是项目设计的权威入口。阅读顺序从产品意图开始，经用户使用契约进入系统结构，最后按子系统查阅具体规则。
+本目录维护已经确定、需要跨任务复用的设计。用户直接依赖的接口集中在公共契约中；系统内部语义、数据流和测试分别由对应设计维护。
 
-项目背景与外部问题资料见 [`../Necessary Project Context.md`](../Necessary%20Project%20Context.md)；实现现状以代码和可执行测试为准；活跃任务与阶段进度不在本目录维护。
+## 文档入口
+
+- [产品设计](产品设计.md)：产品问题、Entity / Link / Route 核心语义和长期边界。
+- [公共契约](contracts/README.md)：用户、Agent、Registry 作者和自动化可以依赖的稳定接口。
+  - [CLI 契约](contracts/CLI契约.md)：命令、flags、JSON、副作用和退出码。
+  - [声明契约](contracts/声明契约.md)：Registry、YAML schema、identity、引用和 Provider data。
+- [系统设计](系统设计.md)：Declaration、Resolve、Provider、Probe 和 Observation 的内部协作。
+- [数据流与存储设计](数据流与存储设计.md)：数据来源、变换、持久化、ownership 和 Secret 血缘。
+- [测试设计](测试设计.md)：公共契约和内部不变量的验证场景。
+- [当前实现快照](../current-architecture.md)：当前代码、E2E 覆盖和契约偏差。
+
+## 阅读顺序
+
+- 用户和 Registry 作者：产品设计 → 公共契约。
+- 实现者：产品设计 → 公共契约 → 系统设计 → 数据流与存储设计 → 测试设计 → 当前实现快照。
 
 ## 管理规则
 
-- 一项规则只在一份权威设计中完整定义；其他文档链接到对应标题。
-- 设计文档描述意图、边界、规则和验证口径，不记录实施顺序、阶段进度或代码文件盘点。
-- 可执行 CLI 行为以 CLI 设计为产品契约；声明格式和内部接口变化必须同步相应子系统设计与测试。
-- 当前实现、确定设计和待决问题必须明确区分；真实案例尚未证明的方向不得写成既定设计。
-- 新增主题前先确认无法并入现有权责；拆分、合并或替代时必须同步本索引和全部引用。
-
-## 叙事权责
-
-| 主题 | 权威文档 | 其他文档只允许描述 |
-|---|---|---|
-| 产品问题、Entity / Link / Route 核心语义、信息归属和永久边界 | [产品设计](产品设计.md) | 与自身接口相关的边界摘要 |
-| 当前 CLI 工作流、命令、参数、输出、副作用和退出码 | [CLI 设计](CLI设计.md) | 调用入口或示例 |
-| 测试基准、关键样例及各样例证明边界 | [测试设计](测试设计.md) | 与自身规则相关的验证引用 |
-| 当前系统结构、组件协作、数据流与通往 Plan / Instance / WebUI 的演进约束 | [系统设计](系统设计.md) | 本子系统参与整体流程的局部视图 |
-| 声明组织、canonical identity、静态校验、Runtime Context、Route applicability、结果基数与 composition | [声明与解析设计](声明与解析设计.md) | 已归一化声明或 Resolve 结果的局部使用方式 |
-| Provider Validate、native context rendering、Safe Probe、安全边界与 provider-native 演进 | [Provider 设计](Provider设计.md) | Provider 调用时机和结果消费方式 |
-| Observation、vantage、freshness、append/query、Route evidence 与执行证据边界 | [Observation 设计](Observation设计.md) | 证据的读取或写入边界 |
-
-## 设计列表与阅读顺序
-
-1. [产品设计](产品设计.md)：产品问题、核心语义、信息归属与永久边界。
-2. [CLI 设计](CLI设计.md)：用户和 Agent 如何完成当前操作闭环。
-3. [测试设计](测试设计.md)：端到端基准和验证关键语义的真实样例。
-4. [系统设计](系统设计.md)：当前系统如何协作，以及后续层如何复用同一 Core。
-5. [声明与解析设计](声明与解析设计.md)：声明如何获得稳定身份，并在 Runtime Context 中解析为显式 Route 与结构化结果。
-6. [Provider 设计](Provider设计.md)：异构原生机制如何校验、渲染和安全测量，而不被通用接口抹平。
-7. [Observation 设计](Observation设计.md)：现实证据如何记录、隔离、查询和聚合，并保持其证明范围。
-
-## 目录边界
-
-- `../Necessary Project Context.md` 保存项目背景和外部输入，不承担现行设计权责。
-- `../current-architecture.md` 记录频繁变化的实现范围，不承担长期设计权责。
-- 根目录 `README.md` 面向使用者，保留必要摘要并链接本目录。
-- `cp-locus-link.md` 维护行动边界和任务；`cpm-locus-link.md` 保存实现经验与历史坑点，均不得复制完整设计。
-
-## 更新规则
-
-- **新增：** 先登记叙事权责，再创建设计正文。
-- **修改：** 同步检查受影响的代码、CLI 契约、E2E 案例和文档链接。
-- **拆分或合并：** 明确迁移后的唯一权威位置，不保留重复正文。
-- **替代或删除：** 更新本索引及所有引用；无独立职责的旧文档直接删除。
-- **建立子目录：** 仅在同一子系统出现多份稳定设计时使用，且子目录必须有自己的 `README.md`。
+- 公共 YAML、CLI 和 JSON 的破坏性变化必须显式版本化或迁移。
+- Go API、SQLite schema 和内部组件拆分不是公共兼容承诺。
+- 同一规则只在一份权威文档中完整定义，其他文档使用链接。
+- 当前代码盘点和契约偏差只写入 `../current-architecture.md`。
+- 任务、进度和待决事项只写入 `cp-locus-link.md`；实现经验写入 `cpm-locus-link.md`。
+- 只有出现独立受众、独立生命周期或多份稳定设计时才拆分新文档或子目录。

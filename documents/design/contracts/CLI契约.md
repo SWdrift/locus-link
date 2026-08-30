@@ -1,12 +1,13 @@
-# Locus Link CLI 设计
+# Locus Link CLI 契约
 
 ## 简述
 
 CLI 是 Locus Link 当前面向人和 Agent 的命令入口。用户以目标和 capability 发起 Resolve，需要时执行 Safe Probe，再用更新后的 Observation 重新理解路径。
 
-- 产品语义见 [产品设计](产品设计.md)
-- 系统关系见 [系统设计](系统设计.md)
-- 当前已实现命令见 [`../current-architecture.md`](../current-architecture.md)
+- 声明 YAML、identity 与 Provider data 见[声明契约](声明契约.md)
+- 产品语义见[产品设计](../产品设计.md)
+- 内部处理流程见[系统设计](../系统设计.md)
+- 当前实现覆盖见[当前实现快照](../../current-architecture.md)
 
 ## 职责
 
@@ -14,6 +15,10 @@ CLI 是 Locus Link 当前面向人和 Agent 的命令入口。用户以目标和
 - 定义各命令的副作用；
 - 定义 JSON、stdout、stderr 和退出码；
 - 保持人和 Agent 使用同一套 CLI 契约。
+
+## 公共稳定性
+
+命令名、command flags、退出码和 `--json` 字段语义是公共契约。内部 Go API、组件拆分、SQLite schema 和外部进程实现不属于公共契约；它们可以随实现演进，但不得静默改变本文件定义的可观察行为。
 
 ## 核心操作循环
 
@@ -180,4 +185,4 @@ Locus 默认从 cwd 向父目录查找：
 
 ## 测试
 
-CLI 的端到端基准和关键样例统一维护在 [测试设计](测试设计.md)。
+CLI 的端到端基准和关键样例统一维护在[测试设计](../测试设计.md)。

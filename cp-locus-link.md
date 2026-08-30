@@ -16,7 +16,10 @@
 ## Scope
 
 - 产品入口：`cmd/locus/main.go`、`internal/locus/`。
-- 权威设计：`documents/design/`；当前 CLI 用户摘要：根目录 `README.md`。
+- 公共契约：`documents/design/contracts/`，维护用户、Agent 和 Registry 作者依赖的 CLI、JSON 与 YAML。
+- 内部设计：`documents/design/系统设计.md`、`documents/design/数据流与存储设计.md`；当前 CLI 用户摘要：根目录 `README.md`。
+- 实现快照：`documents/current-architecture.md`，记录当前代码与 E2E 已证明的事实及契约偏差。
+- 背景资料：`documents/reference/Necessary Project Context.md`，提供问题来源和外部约束，不作为公共契约或当前实现事实源。
 - E2E 声明：`test/e2e/case/`；测试驱动：`test/e2e_test.go`；复现入口：`test/reproduce.ps1`。
 - 运行产物：`temp/e2e-run/`，必须保留供人工复现。
 - 当前 v0 不实现 Planner、自动 path discovery、通用 Executor、Route Instance lifecycle、WebUI、Graph DB、远程 Registry、复杂 Store 或治理。
@@ -55,18 +58,37 @@
 
 ### 变更同步
 
-- CLI、Schema 或领域语义变化时，同步权威设计、README、E2E fixture 和断言。
+- CLI、JSON 或 YAML 变化时同步 `documents/design/contracts/`、README、E2E fixture 和断言；Core 或 Store 语义变化时同步系统设计与数据流设计。
 - 长期可复用决策和坑点沉淀到 `cpm-locus-link.md`；一次性过程不进入 CPM。
 - 设计更新不得把尚未实现的行为写成当前代码事实；实现状态由代码与 E2E 证明。
 
 ## Task Board
 
-### Awaiting User Discussion
+### Ready — Correctness and Safety
 
-- [ ] 讨论并冻结 PostgreSQL 与 Gitea CI/CD 的最小 implementation slice。
-- [ ] 依据真实案例决定 Entity stable facts、documentation discovery 和 Provider 的最小 schema/output 改动。
-- [ ] 验证当前 Route applicability 是否阻塞 worker/deploy path，再决定是否增加最小 step condition/output 语义。
-- [ ] 冻结供 CLI、Agent 与下一阶段 read-oriented WebUI 共用的读取 contract。
+- [ ] 统一声明静态校验：校验对象 `api_version`、ID/role/alias 格式、imported Environment 约束、documentation reference，并让 `validate` 覆盖 Provider 注册与完整 `provider_data` 类型/取值。
+- [ ] Probe 前执行完整 Provider Validate；声明非法或 Provider 不受支持时返回声明错误，不执行测量、不写 failure Observation。
+- [ ] 将 Provider 外部进程诊断改为结构化安全摘要；不能只截断 stdout/stderr，必须防止 credential、token 和敏感配置进入错误或 Observation。
+- [ ] 补齐 Observation 的 `evidence.kind` 与实际测量范围，并修正无 `expires_at` 时被判为 stale 的语义；增加对应 Store/Resolve 测试。
+
+### Next Vertical Slice — PostgreSQL
+
+- [ ] 由 `production-db` 案例冻结最小 Entity stable facts，不引入万能 Connection/property bag。
+- [ ] 增加 PostgreSQL Provider 的 Validate、`psql` native context 和窄 Safe Probe；Secret 仅使用 reference，不执行 SQL。
+- [ ] 让 Resolve 返回 target Entity facts、Binding 解释和 Entity/Link/Route documentation references；实现引用归一化、存在性校验和稳定去重。
+- [ ] 将 PostgreSQL fixture/helper/E2E 加入 `test/e2e/case/`，验证 `resolve → probe → resolve`、文档发现和 Secret 边界。
+
+### Pending Semantic Validation
+
+- [ ] 用真实 Gitea + FRP + Worker CI/CD fixture 验证显式 deploy Route；先确认当前 applicability 阻塞点，再决定最小 step input/output 语义。
+- [ ] PostgreSQL 与 Gitea 案例稳定后，冻结 CLI、Agent 与 read-oriented WebUI 共用的读取 contract。
+
+### Structural Cleanup
+
+- [ ] 拆分 `CLI.load` 的 declaration-only 与 runtime/store 装配，使 `validate/list/show` 不再无意义地探测 PATH 或依赖 Observation state path。
+- [ ] 只在上述 slices 形成明确变化轴后重构 `internal/locus` package；不先按 declaration/Registry/CLI/Provider 预建目录或接口。
+
+各任务的代码证据和公共契约偏差统一维护在 [`documents/current-architecture.md`](documents/current-architecture.md) 的“公共契约符合度”中；Task Board 只保留可执行修改项。
 
 ## 演进路线
 

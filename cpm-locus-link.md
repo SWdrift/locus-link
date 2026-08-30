@@ -22,6 +22,14 @@
 - Observation Store v0 是本机 SQLite，不建设 shared/global/remote Store abstraction。
 - CLI 当前外层 contract 是 `resolve / probe`；其余一级命令按 inspection 与 registry authoring 分层。
 
+## Documentation Architecture
+
+- 用户、Agent、Registry 作者和自动化直接依赖的 CLI、JSON 与 YAML 统一放在 `documents/design/contracts/`，视为需要兼容或显式升级的公共契约。
+- Provider Go interface、Resolver、Observation Store 和 SQLite schema 当前是内部契约或实现细节，不因被记录而成为外部兼容承诺。
+- `documents/design/系统设计.md` 保持 Declaration → Resolve / Probe → Provider → Observation 的连续内部叙事；只有出现独立受众、生命周期或多份稳定设计后才拆专题。
+- `documents/design/数据流与存储设计.md` 维护来源、变换、ownership、持久化、freshness 和 Secret 血缘，不复制公共 schema 或 SQLite 具体表结构。
+- `documents/current-architecture.md` 记录当前代码映射、支持范围和公共契约偏差，不承担目标契约。
+
 ## Forward Compatibility Cases
 
 - PostgreSQL：`production-db` Binding + database Entity stable facts + PostgreSQL Link/provider config + Secret reference + Observation + documentation refs，应解析为 `psql` 等 provider-native context；v0 不执行 SQL。

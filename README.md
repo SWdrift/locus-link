@@ -304,5 +304,7 @@ go test ./...
 
 ## Design Documents
 
-- [高层设计](documents/design-v0.md)
-- [v0 具体设计](documents/v0.md)
+- [设计文档入口](documents/design/README.md)
+- [CLI 公共契约](documents/design/contracts/CLI契约.md)
+- [声明 YAML 公共契约](documents/design/contracts/声明契约.md)
+- [当前实现快照](documents/current-architecture.md)

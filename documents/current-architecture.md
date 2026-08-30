@@ -1,6 +1,6 @@
 # Locus Link 当前实现快照
 
-本文只记录当前 Go 实现与可执行 E2E 已经证明的事实，作为易变实现清单；稳定语义与目标边界由 `documents/design/` 下的设计文档负责。除“明确未实现”一节外，本文不描述计划中的架构。
+本文只记录当前 Go 实现与可执行 E2E 已经证明的事实，作为易变实现清单。公共目标由 [`design/contracts/`](design/contracts/README.md) 定义，内部目标由[系统设计](design/系统设计.md)和[数据流与存储设计](design/数据流与存储设计.md)定义。除“明确未实现”一节外，本文不描述计划中的架构。
 
 ## 1. 总体结构与数据流
 
@@ -169,7 +169,27 @@ stateDiagram-v2
 
 E2E 已覆盖 `init`、严格命令参数、Registry 向上发现、validate、context、list、show；证明 Resolve 不触发 Probe；证明 Shell Route 的 FRP/SSH 顺序 Probe、直接 Link Probe、Salt success/failure/recovery、SQLite 追加计数、status 与 Resolve evidence 更新、不同 vantage 隔离，以及 unresolved/ambiguous 与“不按 evidence 排名”。
 
-## 8. 明确未实现
+## 8. 公共契约符合度
+
+当前公共契约与代码的已知偏差：
+
+| 公共契约 | 当前实现 | 影响 |
+|---|---|---|
+| 对象 `api_version` 必须为 `locus/v0` | manifest 会校验，对象只解码不校验 | 无效对象版本可能进入 Registry |
+| ID、alias、role 遵循规定字符集 | 当前只检查部分必填和唯一性 | 非规范 identity 可以被接受 |
+| Environment 不声明 imports/Project Binding | active Environment imports 会被拒绝；imported Environment 的 imports/bindings 未完整拒绝 | 非法 imported manifest 可能被接受 |
+| documentation ref 归一化并检查资源存在 | 当前仅原样保存 `{ref,title}` | `validate` 无法发现失效引用，Resolve 不返回资料 |
+| `validate` 检查 Provider 注册和完整 data 类型/取值 | Provider 注册、类型检查主要发生在 Resolve/Probe；Validate 多数只检查 key 存在 | 声明错误延迟为运行时错误 |
+| Provider port 必须为 1–65535 | 当前接受整数形态但不检查范围 | 非法端口可能通过声明校验 |
+| Resolve 返回 Binding 解释、target Entity facts 和 documentation refs | 当前只返回 input target、canonical target、Route、NativeHint 和 evidence | 公共 Resolve result 尚未完整实现 |
+| Safe Probe evidence 标识 probe kind 和测量范围 | 当前 success 统一保存 `{"probe":"safe"}` | evidence 不能精确说明证明范围 |
+| `expires_at` 可选；缺省不自动 stale | 当前零值时间会被判为 stale | 无显式过期时间的记录解释错误 |
+| 声明错误不形成 failure Observation | Probe 未统一先执行完整 Provider Validate | 非法 Provider data 可能被误记为现实 failure |
+| 进程诊断在进入错误/Observation 前按 Provider 语义脱敏 | 当前 `sanitizeOutput` 只截断 256 bytes | 短 credential/token 仍可能泄漏 |
+
+这些偏差是实现任务，不改变公共契约。修复后必须更新本表和 E2E 基线。
+
+## 9. 明确未实现
 
 以下能力在当前 Go model、CLI wiring、Provider registry 和 E2E case 中均无实现：
 
