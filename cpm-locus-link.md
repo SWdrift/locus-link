@@ -4,16 +4,31 @@
 
 ## Product Decisions
 
-- Locus Link 是带运行证据的 situated operational context，不是执行器。
-- 长期核心为 Scope + additive import、Binding、canonical identity、窄语义 Link、显式 ordered Route、Declaration/Observation 分离、vantage 和 provider-native context。
+- 当前 Locus Link v0 不拥有通用执行器；长期允许 declared operational paths 被编译、实例化并执行，但必须建立在 Provider-native mechanism 与显式语义之上，禁止抽象成万能 `host.exec()`。
+- Registry 是当前实现/存储/组织形态，不是 Locus 的最终产品边界。
+- 面向人的核心模型是 Entity（operational resource）、Link（一步已知方式）、Route（已知 operational path）；Scope、Binding、Context、Observation 和 documentation refs 是支撑机制。
 - Project 与 Environment 是 declaration ownership/lifecycle Scope，不是 Graph Node。
 - Binding 只表达 Project role → canonical Entity，不是 Link，也不提供 capability。
-- v0 不建立 Local Capability 对象；Capability 是 Link `requires/provides` 字符串与 Resolve 查询条件。
+- Declaration 保存已知访问方式；Instance 保存本次具体访问；Observation 保存实际测量。三者不得互相覆盖。
+- 参数所有权：Entity 保存目标稳定事实；Link / Provider config 保存机制用法；Binding 保存角色映射；Runtime Context / Instance 保存调用时值。
+- Locus 只保存 Secret reference；Secret value 由 SSH Agent、Credential Manager、Vault、环境变量等外部机制负责。
+- v0 不建立 Capability 对象；`requires/provides` 是开放字符串与轻量 fold，当前校验显式 Route，未来为 capability flow、compilation 和 planning 保留语义空间。
 - Route 的 target 由最后一个 Link 的 `to` 推导，provides 由 ordered steps 累计推导；不重复声明 target/provides/priority/generic constraints。
-- Route 不要求严格节点连续。FRP→SSH 通过 `tcp-forward.ssh` 的 provides/requires 组合，不创建 localhost endpoint、session 或 tunnel Entity。
-- Observation v0 只记录 canonical Link subject + vantage；Route 状态实时聚合，不落库。
+- Route 不要求严格节点连续。FRP→SSH 等链路表达前一步为后一步建立条件，不创建 localhost endpoint、session 或 tunnel Entity。
+- v0 只解析显式 Route，不做自动 ranking、path discovery 或选择；显式 Route → future compilation / instantiation 是连续演进，不是未来重写。
+- Observation 只记录 canonical Link subject + vantage；Route 状态实时聚合，不落库。Provider safe probe passed 不等于完整 capability 已被证明。
+- Documentation reference 属于 declaration graph，供 Agent progressive context disclosure；文档内容不覆盖结构化声明，也不参与 capability、Route 或 execution 语义。
+- CLI、Agent 与未来 WebUI 共享同一个 Locus Core / truth source；初始 WebUI 可围绕 Graph、Status、Knowledge 做 read-oriented 视图。
 - Observation Store v0 是本机 SQLite，不建设 shared/global/remote Store abstraction。
-- CLI 外层 contract 是 `resolve / probe`；其余一级命令按 inspection 与 registry authoring 分层。
+- CLI 当前外层 contract 是 `resolve / probe`；其余一级命令按 inspection 与 registry authoring 分层。
+
+## Forward Compatibility Cases
+
+- PostgreSQL：`production-db` Binding + database Entity stable facts + PostgreSQL Link/provider config + Secret reference + Observation + documentation refs，应解析为 `psql` 等 provider-native context；v0 不执行 SQL。
+- Gitea CI/CD：`source`、`ci-worker`、`production` Bindings 与 Gitea→FRP/bastion→worker→existing deploy mechanism 显式 Route，应让 Agent 发现既有 deployment path；Locus 不重建 Runner、FRP 或 CI/CD。
+- Gitea 已有真实路径，不再属于 Awaiting Real Need；是否新增 Provider 取决于某一步是否存在独立 Validate/Render/Probe 契约，而不是对象名称。
+- 当前 `Link.from == current_entity` applicability 可能阻塞 worker/deploy 或 tunnel 实例化语义；必须由两个案例验证后，才决定是否增加最小 step condition/output 表达。
+- 下一步优先稳定 Entity facts、Resolve documentation discovery、provider-native hint 与结构化 read contract；不创建 Planner、Executor、Runtime、InstanceManager、WebServer 或 GraphEngine 脚手架。
 
 ## Verified Implementation Baseline
 
