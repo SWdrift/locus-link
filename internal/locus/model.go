@@ -86,6 +86,7 @@ type Registry struct {
 	Links    map[string]*Link
 	Routes   map[string]*Route
 	local    map[string]map[string]string
+	sources  map[string]string
 }
 
 type rawType struct {
@@ -117,7 +118,8 @@ func LoadRegistry(root string) (*Registry, error) {
 	}
 	registry := &Registry{
 		Root: absolute, Scopes: map[string]Manifest{}, Aliases: map[string]string{}, Bindings: map[string]string{},
-		Entities: map[string]*Entity{}, Links: map[string]*Link{}, Routes: map[string]*Route{}, local: map[string]map[string]string{},
+		Entities: map[string]*Entity{}, Links: map[string]*Link{}, Routes: map[string]*Route{},
+		local: map[string]map[string]string{}, sources: map[string]string{},
 	}
 	manifest, err := readManifest(filepath.Join(absolute, "scope.yaml"))
 	if err != nil {
@@ -127,12 +129,15 @@ func LoadRegistry(root string) (*Registry, error) {
 	if err := registry.loadScope(absolute, manifest); err != nil {
 		return nil, err
 	}
-	if manifest.Scope.Kind == "environment" && len(manifest.Imports) > 0 {
-		return nil, errors.New("environment imports are not supported in v0")
+	if err := validateEnvironmentManifest(manifest); err != nil {
+		return nil, err
 	}
 	for _, imported := range manifest.Imports {
 		if imported.Alias == "" || imported.Path == "" {
 			return nil, errors.New("import alias and path are required")
+		}
+		if !validDeclarationName(imported.Alias) {
+			return nil, fmt.Errorf("invalid import alias %q", imported.Alias)
 		}
 		if _, exists := registry.Aliases[imported.Alias]; exists {
 			return nil, fmt.Errorf("duplicate import alias %q", imported.Alias)
@@ -152,13 +157,24 @@ func LoadRegistry(root string) (*Registry, error) {
 		if importManifest.Scope.Kind != "environment" {
 			return nil, fmt.Errorf("import %s is not an environment scope", imported.Alias)
 		}
+		if err := validateEnvironmentManifest(importManifest); err != nil {
+			return nil, fmt.Errorf("import %s: %w", imported.Alias, err)
+		}
 		registry.Aliases[imported.Alias] = importManifest.Scope.ID
 		if err := registry.loadScope(path, importManifest); err != nil {
 			return nil, err
 		}
 	}
-	for role, ref := range manifest.Bindings {
-		canonical, err := registry.resolveRef(manifest.Scope.ID, ref, "entity")
+	roles := make([]string, 0, len(manifest.Bindings))
+	for role := range manifest.Bindings {
+		roles = append(roles, role)
+	}
+	sort.Strings(roles)
+	for _, role := range roles {
+		if !validDeclarationName(role) {
+			return nil, fmt.Errorf("invalid binding role %q", role)
+		}
+		canonical, err := registry.resolveRef(manifest.Scope.ID, manifest.Bindings[role], "entity")
 		if err != nil {
 			return nil, fmt.Errorf("binding %s: %w", role, err)
 		}
@@ -178,10 +194,39 @@ func readManifest(path string) (Manifest, error) {
 	if manifest.APIVersion != "locus/v0" {
 		return manifest, fmt.Errorf("%s: api_version must be locus/v0", path)
 	}
-	if manifest.Scope.ID == "" || (manifest.Scope.Kind != "project" && manifest.Scope.Kind != "environment") {
+	if manifest.Scope.ID == "" || !validDeclarationName(manifest.Scope.ID) ||
+		(manifest.Scope.Kind != "project" && manifest.Scope.Kind != "environment") {
 		return manifest, fmt.Errorf("%s: invalid scope", path)
 	}
 	return manifest, nil
+}
+
+func validateEnvironmentManifest(manifest Manifest) error {
+	if manifest.Scope.Kind != "environment" {
+		return nil
+	}
+	if len(manifest.Imports) > 0 {
+		return errors.New("environment imports are not supported in v0")
+	}
+	if len(manifest.Bindings) > 0 {
+		return errors.New("environment bindings are not supported in v0")
+	}
+	return nil
+}
+
+func validDeclarationName(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' ||
+			character >= '0' && character <= '9' ||
+			character == '.' || character == '_' || character == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func (r *Registry) loadScope(root string, manifest Manifest) error {
@@ -245,6 +290,7 @@ func (r *Registry) loadObject(path, scopeID string) error {
 			return err
 		}
 		r.Entities[value.CanonicalID] = &value
+		r.sources[value.CanonicalID] = path
 	case "link":
 		var value Link
 		if err := decodeYAMLNode(path, &node, &value); err != nil {
@@ -255,6 +301,7 @@ func (r *Registry) loadObject(path, scopeID string) error {
 			return err
 		}
 		r.Links[value.CanonicalID] = &value
+		r.sources[value.CanonicalID] = path
 	case "route":
 		var value Route
 		if err := decodeYAMLNode(path, &node, &value); err != nil {
@@ -265,6 +312,7 @@ func (r *Registry) loadObject(path, scopeID string) error {
 			return err
 		}
 		r.Routes[value.CanonicalID] = &value
+		r.sources[value.CanonicalID] = path
 	default:
 		return fmt.Errorf("%s: unsupported type %q", path, header.Type)
 	}
@@ -335,23 +383,58 @@ func (r *Registry) exists(id, kind string) bool {
 
 func (r *Registry) Validate() []string {
 	var issues []string
+	for scopeID, manifest := range r.Scopes {
+		if manifest.APIVersion != "locus/v0" {
+			issues = append(issues, fmt.Sprintf("%s: api_version must be locus/v0", scopeID))
+		}
+		if !validDeclarationName(manifest.Scope.ID) {
+			issues = append(issues, fmt.Sprintf("%s: invalid scope id %q", scopeID, manifest.Scope.ID))
+		}
+		if err := validateEnvironmentManifest(manifest); err != nil {
+			issues = append(issues, scopeID+": "+err.Error())
+		}
+		for _, imported := range manifest.Imports {
+			if !validDeclarationName(imported.Alias) {
+				issues = append(issues, fmt.Sprintf("%s: invalid import alias %q", scopeID, imported.Alias))
+			}
+			if imported.Path == "" {
+				issues = append(issues, scopeID+": import path is required")
+			}
+		}
+		for role := range manifest.Bindings {
+			if !validDeclarationName(role) {
+				issues = append(issues, fmt.Sprintf("%s: invalid binding role %q", scopeID, role))
+			}
+		}
+	}
+	for _, entity := range r.Entities {
+		issues = append(issues, r.validateObject(entity.CanonicalID, entity.APIVersion, entity.ID, entity.Documentation)...)
+	}
+	providers := NewProviders()
 	for _, link := range r.Links {
+		issues = append(issues, r.validateObject(link.CanonicalID, link.APIVersion, link.ID, link.Documentation)...)
 		from, err := r.resolveRef(link.ScopeID, link.From, "entity")
 		if err != nil {
 			issues = append(issues, link.CanonicalID+": "+err.Error())
-			continue
+		} else {
+			link.From = from
 		}
 		to, err := r.resolveRef(link.ScopeID, link.To, "entity")
 		if err != nil {
 			issues = append(issues, link.CanonicalID+": "+err.Error())
-			continue
+		} else {
+			link.To = to
 		}
-		link.From, link.To = from, to
 		if link.Provider == "" {
 			issues = append(issues, link.CanonicalID+": provider is required")
+		} else if provider, ok := providers.Get(link.Provider); !ok {
+			issues = append(issues, fmt.Sprintf("%s: unsupported provider %s", link.CanonicalID, link.Provider))
+		} else {
+			issues = append(issues, provider.Validate(link)...)
 		}
 	}
 	for _, route := range r.Routes {
+		issues = append(issues, r.validateObject(route.CanonicalID, route.APIVersion, route.ID, route.Documentation)...)
 		available := map[string]bool{}
 		for index := range route.Steps {
 			linkID, err := r.resolveRef(route.ScopeID, route.Steps[index].Link, "link")
@@ -376,6 +459,59 @@ func (r *Registry) Validate() []string {
 	}
 	sort.Strings(issues)
 	return issues
+}
+
+func (r *Registry) validateObject(canonicalID, apiVersion, localID string, documentation []Documentation) []string {
+	var issues []string
+	if apiVersion != "locus/v0" {
+		issues = append(issues, canonicalID+": api_version must be locus/v0")
+	}
+	if !validDeclarationName(localID) {
+		issues = append(issues, fmt.Sprintf("%s: invalid local id %q", canonicalID, localID))
+	}
+	source := r.sources[canonicalID]
+	for index, document := range documentation {
+		ref := document.Ref
+		path, _, _ := strings.Cut(ref, "#")
+		if ref == "" || ref != strings.TrimSpace(ref) || path == "" {
+			issues = append(issues, fmt.Sprintf("%s: documentation[%d].ref is invalid", canonicalID, index))
+			continue
+		}
+		documentPath := filepath.FromSlash(path)
+		if filepath.IsAbs(documentPath) {
+			issues = append(issues, fmt.Sprintf("%s: documentation[%d].ref must be relative", canonicalID, index))
+			continue
+		}
+		if source == "" {
+			continue
+		}
+		scopeRoot := filepath.Dir(filepath.Dir(source))
+		docsRoot := filepath.Join(scopeRoot, "docs")
+		documentPath = filepath.Clean(filepath.Join(filepath.Dir(source), documentPath))
+		if !pathContainedBy(docsRoot, documentPath) {
+			issues = append(issues, fmt.Sprintf("%s: documentation[%d].ref %q must stay within the scope docs directory", canonicalID, index, ref))
+			continue
+		}
+		info, err := os.Stat(documentPath)
+		if err != nil || info.IsDir() {
+			issues = append(issues, fmt.Sprintf("%s: documentation[%d].ref %q does not reference a file", canonicalID, index, ref))
+			continue
+		}
+		resolvedScopeRoot, rootErr := filepath.EvalSymlinks(scopeRoot)
+		resolvedDocsRoot, docsErr := filepath.EvalSymlinks(docsRoot)
+		resolvedDocument, documentErr := filepath.EvalSymlinks(documentPath)
+		if rootErr != nil || docsErr != nil || documentErr != nil ||
+			!pathContainedBy(resolvedScopeRoot, resolvedDocsRoot) ||
+			!pathContainedBy(resolvedDocsRoot, resolvedDocument) {
+			issues = append(issues, fmt.Sprintf("%s: documentation[%d].ref %q resolves outside the scope docs directory", canonicalID, index, ref))
+		}
+	}
+	return issues
+}
+
+func pathContainedBy(root, candidate string) bool {
+	relative, err := filepath.Rel(root, candidate)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func (r *Registry) ResolveEntity(ref string) (string, error) {

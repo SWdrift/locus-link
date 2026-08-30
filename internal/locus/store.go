@@ -146,15 +146,22 @@ func scanObservation(row scanner) (*Observation, error) {
 	return &value, nil
 }
 
-func newObservation(link *Link, runtime RuntimeContext, provider string) Observation {
+func newObservation(link *Link, runtime RuntimeContext, provider, evidenceKind string) Observation {
 	now := time.Now().UTC()
-	return Observation{Subject: link.CanonicalID, Vantage: runtime.Vantage, Status: "unknown", ObservedAt: now, ExpiresAt: now.Add(15 * time.Minute), Provider: provider}
+	return Observation{
+		Subject:    link.CanonicalID,
+		Vantage:    runtime.Vantage,
+		Status:     "unknown",
+		ObservedAt: now,
+		ExpiresAt:  now.Add(15 * time.Minute),
+		Provider:   provider,
+		Evidence:   map[string]any{"kind": evidenceKind},
+	}
 }
 
 func finishObservation(value Observation, err error) Observation {
 	if err == nil {
 		value.Status = "success"
-		value.Evidence = map[string]any{"probe": "safe"}
 		return value
 	}
 	value.Status = "failure"

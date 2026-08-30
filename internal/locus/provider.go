@@ -3,10 +3,12 @@ package locus
 import (
 	"context"
 	"fmt"
+	"math"
 	"net"
 	"os/exec"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -66,7 +68,11 @@ type frpProvider struct{}
 func (frpProvider) Name() string       { return "frp-stcp" }
 func (frpProvider) Executable() string { return "frpc" }
 func (frpProvider) Validate(link *Link) []string {
-	return requireProviderFields(link, "config", "local_host", "local_port")
+	var issues []string
+	issues = append(issues, validateProviderString(link, "config")...)
+	issues = append(issues, validateProviderString(link, "local_host")...)
+	issues = append(issues, validateProviderPort(link, "local_port")...)
+	return issues
 }
 func (frpProvider) Render(link *Link, _ RuntimeContext) (NativeHint, error) {
 	config, err := providerString(link, "config")
@@ -75,13 +81,17 @@ func (frpProvider) Render(link *Link, _ RuntimeContext) (NativeHint, error) {
 	}
 	return NativeHint{Executable: "frpc", Args: []string{"-c", config}}, nil
 }
-func (frpProvider) Probe(ctx context.Context, link *Link, runtime RuntimeContext) Observation {
-	observation := newObservation(link, runtime, "frp-stcp")
+func (provider frpProvider) Probe(ctx context.Context, link *Link, runtime RuntimeContext) Observation {
+	observation := newObservation(link, runtime, provider.Name(), "frpc-config-and-tcp-connect")
+	if issues := provider.Validate(link); len(issues) != 0 {
+		return finishObservation(observation, providerValidationError(issues))
+	}
+
 	config, err := providerString(link, "config")
 	if err == nil {
 		command := exec.CommandContext(ctx, "frpc", "verify", "-c", config)
-		if output, commandErr := command.CombinedOutput(); commandErr != nil {
-			err = fmt.Errorf("frpc verify: %v: %s", commandErr, sanitizeOutput(output))
+		if commandErr := command.Run(); commandErr != nil {
+			err = summarizeCommandFailure(ctx, "frpc verify", commandErr)
 		}
 	}
 	if err == nil {
@@ -95,7 +105,16 @@ type sshProvider struct{}
 func (sshProvider) Name() string       { return "ssh" }
 func (sshProvider) Executable() string { return "ssh" }
 func (sshProvider) Validate(link *Link) []string {
-	return requireProviderFields(link, "user", "host", "port")
+	var issues []string
+	issues = append(issues, validateProviderString(link, "user")...)
+	issues = append(issues, validateProviderString(link, "host")...)
+	issues = append(issues, validateProviderPort(link, "port")...)
+	if link != nil && link.ProviderData != nil {
+		if _, exists := link.ProviderData["credential_ref"]; exists {
+			issues = append(issues, validateProviderString(link, "credential_ref")...)
+		}
+	}
+	return issues
 }
 func (sshProvider) Render(link *Link, _ RuntimeContext) (NativeHint, error) {
 	user, err := providerString(link, "user")
@@ -116,18 +135,22 @@ func (sshProvider) Render(link *Link, _ RuntimeContext) (NativeHint, error) {
 	}
 	return hint, nil
 }
-func (sshProvider) Probe(ctx context.Context, link *Link, runtime RuntimeContext) Observation {
-	observation := newObservation(link, runtime, "ssh")
+func (provider sshProvider) Probe(ctx context.Context, link *Link, runtime RuntimeContext) Observation {
+	observation := newObservation(link, runtime, provider.Name(), "tcp-connect-and-ssh-config")
+	if issues := provider.Validate(link); len(issues) != 0 {
+		return finishObservation(observation, providerValidationError(issues))
+	}
+
 	err := dialProviderEndpoint(ctx, link)
 	if err == nil {
-		hint, renderErr := (sshProvider{}).Render(link, runtime)
+		hint, renderErr := provider.Render(link, runtime)
 		if renderErr != nil {
 			err = renderErr
 		} else {
 			args := append([]string{"-G"}, hint.Args...)
 			command := exec.CommandContext(ctx, "ssh", args...)
-			if output, commandErr := command.CombinedOutput(); commandErr != nil {
-				err = fmt.Errorf("ssh config probe: %v: %s", commandErr, sanitizeOutput(output))
+			if commandErr := command.Run(); commandErr != nil {
+				err = summarizeCommandFailure(ctx, "ssh config probe", commandErr)
 			}
 		}
 	}
@@ -139,7 +162,7 @@ type saltProvider struct{}
 func (saltProvider) Name() string       { return "salt" }
 func (saltProvider) Executable() string { return "salt" }
 func (saltProvider) Validate(link *Link) []string {
-	return requireProviderFields(link, "minion_id")
+	return validateProviderString(link, "minion_id")
 }
 func (saltProvider) Render(link *Link, _ RuntimeContext) (NativeHint, error) {
 	minionID, err := providerString(link, "minion_id")
@@ -148,51 +171,136 @@ func (saltProvider) Render(link *Link, _ RuntimeContext) (NativeHint, error) {
 	}
 	return NativeHint{Executable: "salt", Args: []string{minionID, "test.ping", "--out=json"}}, nil
 }
-func (saltProvider) Probe(ctx context.Context, link *Link, runtime RuntimeContext) Observation {
-	observation := newObservation(link, runtime, "salt")
-	hint, err := (saltProvider{}).Render(link, runtime)
+func (provider saltProvider) Probe(ctx context.Context, link *Link, runtime RuntimeContext) Observation {
+	observation := newObservation(link, runtime, provider.Name(), "salt-test-ping")
+	if issues := provider.Validate(link); len(issues) != 0 {
+		return finishObservation(observation, providerValidationError(issues))
+	}
+
+	hint, err := provider.Render(link, runtime)
 	if err == nil {
 		command := exec.CommandContext(ctx, hint.Executable, hint.Args...)
-		if output, commandErr := command.CombinedOutput(); commandErr != nil {
-			err = fmt.Errorf("salt test.ping: %v: %s", commandErr, sanitizeOutput(output))
+		if commandErr := command.Run(); commandErr != nil {
+			err = summarizeCommandFailure(ctx, "salt test.ping", commandErr)
 		}
 	}
 	return finishObservation(observation, err)
 }
 
-func requireProviderFields(link *Link, fields ...string) []string {
-	var issues []string
-	for _, field := range fields {
-		if _, exists := link.ProviderData[field]; !exists {
-			issues = append(issues, fmt.Sprintf("%s: provider_data.%s is required", link.CanonicalID, field))
-		}
+func validateProviderString(link *Link, key string) []string {
+	subject := providerSubject(link)
+	if link == nil || link.ProviderData == nil {
+		return []string{fmt.Sprintf("%s: provider_data.%s is required", subject, key)}
 	}
-	return issues
+	value, exists := link.ProviderData[key]
+	if !exists {
+		return []string{fmt.Sprintf("%s: provider_data.%s is required", subject, key)}
+	}
+	text, ok := value.(string)
+	if !ok {
+		return []string{fmt.Sprintf("%s: provider_data.%s must be a string", subject, key)}
+	}
+	if strings.TrimSpace(text) == "" {
+		return []string{fmt.Sprintf("%s: provider_data.%s must not be empty", subject, key)}
+	}
+	return nil
+}
+
+func validateProviderPort(link *Link, key string) []string {
+	if _, err := providerPortField(link, key); err != nil {
+		return []string{err.Error()}
+	}
+	return nil
+}
+
+func providerValidationError(issues []string) error {
+	return fmt.Errorf("invalid provider declaration: %s", strings.Join(issues, "; "))
+}
+
+func providerSubject(link *Link) string {
+	if link == nil {
+		return "link"
+	}
+	if link.CanonicalID != "" {
+		return link.CanonicalID
+	}
+	if link.ID != "" {
+		return link.ID
+	}
+	return "link"
 }
 
 func providerString(link *Link, key string) (string, error) {
-	value, ok := link.ProviderData[key].(string)
-	if !ok || value == "" {
-		return "", fmt.Errorf("%s: provider_data.%s must be a string", link.CanonicalID, key)
+	if issues := validateProviderString(link, key); len(issues) != 0 {
+		return "", fmt.Errorf("%s", issues[0])
 	}
-	return value, nil
+	return link.ProviderData[key].(string), nil
 }
 
 func providerPort(link *Link) (int, error) {
-	value, exists := link.ProviderData["port"]
+	key := "port"
+	if link == nil || link.ProviderData == nil {
+		return providerPortField(link, key)
+	}
+	if _, exists := link.ProviderData[key]; !exists {
+		key = "local_port"
+	}
+	return providerPortField(link, key)
+}
+
+func providerPortField(link *Link, key string) (int, error) {
+	subject := providerSubject(link)
+	if link == nil || link.ProviderData == nil {
+		return 0, fmt.Errorf("%s: provider_data.%s is required", subject, key)
+	}
+	value, exists := link.ProviderData[key]
 	if !exists {
-		value = link.ProviderData["local_port"]
+		return 0, fmt.Errorf("%s: provider_data.%s is required", subject, key)
 	}
-	switch port := value.(type) {
+
+	var port int64
+	switch value := value.(type) {
 	case int:
-		return port, nil
+		port = int64(value)
+	case int8:
+		port = int64(value)
+	case int16:
+		port = int64(value)
+	case int32:
+		port = int64(value)
+	case int64:
+		port = value
+	case uint:
+		if uint64(value) > 65535 {
+			return 0, fmt.Errorf("%s: provider_data.%s must be between 1 and 65535", subject, key)
+		}
+		port = int64(value)
+	case uint8:
+		port = int64(value)
+	case uint16:
+		port = int64(value)
+	case uint32:
+		port = int64(value)
 	case uint64:
-		return int(port), nil
+		if value > 65535 {
+			return 0, fmt.Errorf("%s: provider_data.%s must be between 1 and 65535", subject, key)
+		}
+		port = int64(value)
 	case float64:
-		return int(port), nil
+		if math.IsNaN(value) || math.IsInf(value, 0) || math.Trunc(value) != value {
+			return 0, fmt.Errorf("%s: provider_data.%s must be an integer", subject, key)
+		}
+		if value < 1 || value > 65535 {
+			return 0, fmt.Errorf("%s: provider_data.%s must be between 1 and 65535", subject, key)
+		}
+		port = int64(value)
 	default:
-		return 0, fmt.Errorf("%s: provider port must be an integer", link.CanonicalID)
+		return 0, fmt.Errorf("%s: provider_data.%s must be an integer", subject, key)
 	}
+	if port < 1 || port > 65535 {
+		return 0, fmt.Errorf("%s: provider_data.%s must be between 1 and 65535", subject, key)
+	}
+	return int(port), nil
 }
 
 func dialProviderEndpoint(ctx context.Context, link *Link) error {
@@ -216,9 +324,15 @@ func dialProviderEndpoint(ctx context.Context, link *Link) error {
 	return connection.Close()
 }
 
-func sanitizeOutput(output []byte) string {
-	if len(output) > 256 {
-		output = output[:256]
+func summarizeCommandFailure(ctx context.Context, operation string, err error) error {
+	if ctx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("%s timed out", operation)
 	}
-	return string(output)
+	if ctx.Err() == context.Canceled {
+		return fmt.Errorf("%s canceled", operation)
+	}
+	if exitError, ok := err.(*exec.ExitError); ok {
+		return fmt.Errorf("%s failed with exit code %d", operation, exitError.ExitCode())
+	}
+	return fmt.Errorf("%s failed to start", operation)
 }

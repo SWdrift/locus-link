@@ -69,7 +69,7 @@ func TestResolveRouteCardinalityAndNoRanking(t *testing.T) {
 	now := time.Now()
 	for _, observation := range []Observation{
 		{Subject: failureLink.CanonicalID, Vantage: runtime.Vantage, Status: "failure", ObservedAt: now, ExpiresAt: now.Add(time.Hour), Provider: provider.Name()},
-		{Subject: successLink.CanonicalID, Vantage: runtime.Vantage, Status: "success", ObservedAt: now, ExpiresAt: now.Add(time.Hour), Provider: provider.Name()},
+		{Subject: successLink.CanonicalID, Vantage: runtime.Vantage, Status: "success", ObservedAt: now, Provider: provider.Name()},
 	} {
 		if _, err := store.Append(ctx, observation); err != nil {
 			t.Fatal(err)
@@ -90,6 +90,72 @@ func TestResolveRouteCardinalityAndNoRanking(t *testing.T) {
 	}
 	if provider.probeCalls != 0 {
 		t.Fatalf("resolve invoked Provider.Probe %d time(s)", provider.probeCalls)
+	}
+}
+
+func TestRouteEvidenceExpiryAndAggregation(t *testing.T) {
+	ctx := context.Background()
+	storePath := workspaceTestPath(t, "route-evidence", "state.db")
+	if err := os.RemoveAll(filepath.Dir(storePath)); err != nil {
+		t.Fatal(err)
+	}
+	store, err := OpenStore(storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	const vantage = "office-lan"
+	now := time.Now().UTC()
+	observations := []Observation{
+		{Subject: "link.non-expiring", Vantage: vantage, Status: "success", ObservedAt: now},
+		{Subject: "link.future", Vantage: vantage, Status: "success", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
+		{Subject: "link.expired", Vantage: vantage, Status: "success", ObservedAt: now, ExpiresAt: now.Add(-time.Hour)},
+		{Subject: "link.failure", Vantage: vantage, Status: "failure", ObservedAt: now},
+	}
+	for _, observation := range observations {
+		if _, err := store.Append(ctx, observation); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	registry := &Registry{}
+	cases := []struct {
+		name   string
+		links  []string
+		status string
+	}{
+		{name: "zero expiry passes", links: []string{"link.non-expiring"}, status: "success"},
+		{name: "future expiry passes", links: []string{"link.future"}, status: "success"},
+		{name: "expired is stale", links: []string{"link.expired"}, status: "stale"},
+		{name: "failure fails", links: []string{"link.failure"}, status: "failure"},
+		{name: "all successful steps pass", links: []string{"link.non-expiring", "link.future"}, status: "success"},
+		{name: "stale follows successful steps", links: []string{"link.non-expiring", "link.expired"}, status: "stale"},
+		{name: "unknown takes precedence over stale", links: []string{"link.expired", "link.missing"}, status: "unknown"},
+		{name: "failure takes precedence", links: []string{"link.missing", "link.failure", "link.expired"}, status: "failure"},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			route := &Route{}
+			for _, linkID := range test.links {
+				route.Steps = append(route.Steps, RouteStep{Link: linkID})
+			}
+			evidence, err := registry.RouteEvidence(ctx, route, vantage, store)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if evidence.Status != test.status {
+				t.Fatalf("RouteEvidence status = %q, want %q: %#v", evidence.Status, test.status, evidence)
+			}
+			if len(evidence.Links) != len(test.links) {
+				t.Fatalf("RouteEvidence returned %d links, want %d: %#v", len(evidence.Links), len(test.links), evidence)
+			}
+			for index, linkID := range test.links {
+				if evidence.Links[index].LinkID != linkID {
+					t.Fatalf("RouteEvidence link %d = %q, want %q: %#v", index, evidence.Links[index].LinkID, linkID, evidence)
+				}
+			}
+		})
 	}
 }
 

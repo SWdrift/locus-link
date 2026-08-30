@@ -128,7 +128,7 @@ func (r *Registry) resolveRoute(ctx context.Context, route *Route, target, capab
 func classifyLinkEvidence(linkID string, observation *Observation) LinkEvidence {
 	status := "unknown"
 	if observation != nil {
-		if time.Now().After(observation.ExpiresAt) {
+		if !observation.ExpiresAt.IsZero() && observation.ExpiresAt.Before(time.Now()) {
 			status = "stale"
 		} else {
 			status = observation.Status
