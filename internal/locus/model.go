@@ -1,14 +1,16 @@
 package locus
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v4"
 )
 
 type Scope struct {
@@ -213,14 +215,29 @@ func (r *Registry) loadObject(path, scopeID string) error {
 	if err != nil {
 		return err
 	}
+	loader, err := yaml.NewLoader(bytes.NewReader(data), yaml.WithUniqueKeys())
+	if err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	var node yaml.Node
+	if err := loader.Load(&node); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	var extra yaml.Node
+	if err := loader.Load(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return fmt.Errorf("%s: multiple YAML documents are not supported", path)
+		}
+		return fmt.Errorf("%s: %w", path, err)
+	}
 	var header rawType
-	if err := yaml.Unmarshal(data, &header); err != nil {
+	if err := node.Load(&header); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	switch header.Type {
 	case "entity":
 		var value Entity
-		if err := decodeYAML(path, &value); err != nil {
+		if err := decodeYAMLNode(path, &node, &value); err != nil {
 			return err
 		}
 		value.ScopeID, value.CanonicalID = scopeID, canonical(scopeID, value.ID)
@@ -230,7 +247,7 @@ func (r *Registry) loadObject(path, scopeID string) error {
 		r.Entities[value.CanonicalID] = &value
 	case "link":
 		var value Link
-		if err := decodeYAML(path, &value); err != nil {
+		if err := decodeYAMLNode(path, &node, &value); err != nil {
 			return err
 		}
 		value.ScopeID, value.CanonicalID = scopeID, canonical(scopeID, value.ID)
@@ -240,7 +257,7 @@ func (r *Registry) loadObject(path, scopeID string) error {
 		r.Links[value.CanonicalID] = &value
 	case "route":
 		var value Route
-		if err := decodeYAML(path, &value); err != nil {
+		if err := decodeYAMLNode(path, &node, &value); err != nil {
 			return err
 		}
 		value.ScopeID, value.CanonicalID = scopeID, canonical(scopeID, value.ID)
@@ -259,9 +276,14 @@ func decodeYAML(path string, target any) error {
 	if err != nil {
 		return err
 	}
-	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(target); err != nil {
+	if err := yaml.Load(data, target, yaml.WithKnownFields(), yaml.WithSingleDocument(), yaml.WithUniqueKeys()); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return nil
+}
+
+func decodeYAMLNode(path string, node *yaml.Node, target any) error {
+	if err := node.Load(target, yaml.WithKnownFields()); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	return nil

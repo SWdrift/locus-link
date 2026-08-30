@@ -63,6 +63,7 @@
 - Salt helper 不依赖 listener，可在保留的 `temp/e2e-run/` 中手动切换 `salt-up/salt-down` 观察 failure/recovery。
 - E2E source fixture 应保持可审阅并提交；动态端口、绝对 FRP config path、Project ID 和 workstation 只在物化时替换。
 - 新 Provider 应自报 executable；`Providers.Available` 从 Provider registry 推导并排序，避免新增 Provider 时维护重复列表。
+- Registry YAML 使用 `go.yaml.in/yaml/v4` 严格解析；对象文件先加载为单个 `yaml.Node`，再按 `type` 解码，避免重复文件读取。v4 rc.6 的 `WithSingleDocument` 对 `yaml.Node` 不会拒绝多文档流，必须通过 Loader 显式确认后续读取为 `io.EOF`。
 
 ## Session Milestones
 

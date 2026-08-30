@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v4"
 )
 
 const (
@@ -305,7 +305,7 @@ func (c *CLI) init(opts options) (any, error) {
 		}
 	}
 	manifest := Manifest{APIVersion: "locus/v0", Scope: Scope{ID: opts.ScopeID, Kind: opts.ScopeKind}}
-	data, err := yaml.Marshal(manifest)
+	data, err := yaml.Dump(manifest, yaml.WithV3Defaults())
 	if err != nil {
 		return nil, err
 	}
