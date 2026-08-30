@@ -1,41 +1,192 @@
 # Locus Link
 
-Locus Link 为用户和 Agent 提供带运行证据的 operational context：它把 Project、Environment、Binding、Entity、Link 和显式 Route 组合起来，回答“从当前位置如何触及目标，以及这条路径最近是否验证过”。
-
-Locus Link **不执行 Route**。它解析路径、生成 Provider 原生命令上下文，并通过安全检查记录 Link Observation；SSH、FRP、Salt 等原生工具仍负责实际操作。
-
-## 当前能力
-
-- Project / Environment Scope。
-- 本地路径 Environment import；namespaced additive composition。
-- Project role → canonical Entity Binding。
-- Entity、Link、ordered Route YAML 声明。
-- FRP、SSH、Salt Provider-native context。
-- FRP→SSH `requires/provides` capability composition。
-- Link-only Observation、vantage 和 Route evidence 聚合。
-- 本机 SQLite Observation Store。
-- 面向用户和 Agent 的 JSON CLI。
+Locus Link 根据当前 operational context、目标和 capability 解析人工声明的 Route，返回 canonical target、ordered Links、Provider 原生上下文和最近的 Observation。它不执行 Route，不启动 FRP、不建立 SSH session，也不执行 Salt operation。
 
 当前不包含自动路径发现、Planner、Executor、Graph DB、远程 Registry、Web UI 或 Secret Store。
 
-## 构建
+## Quick Start
 
-需要 Go 1.26 或兼容版本。
+用户和 Agent 首先只需要记住：
 
-```powershell
-New-Item -ItemType Directory -Force temp/bin | Out-Null
-go build -o temp/bin/locus.exe ./cmd/locus
+```text
+resolve = 声明上如何触及目标，最近的现实证据如何？
+probe   = 现在实际通吗？
 ```
 
-下文用 `locus` 代表构建出的可执行文件。在 PowerShell 中可设置：
+在包含 `.locus/registry` 的项目或其任意子目录中运行：
 
-```powershell
-$locus = "$PWD/temp/bin/locus.exe"
+```text
+locus resolve production-host --capability shell --from workstation.dev-a --vantage office-lan
 ```
 
-## Registry 结构
+`resolve` 返回：
 
-一个最小 Scope：
+```text
+canonical target
+matched route
+ordered links
+provider-native context / NativeHint
+current evidence
+```
+
+例如：
+
+```text
+status: resolved
+target: environment.customer-a::host.prod-01
+route: project.example::route.prod-shell
+evidence: stale
+```
+
+需要刷新现实证据时：
+
+```text
+locus probe route.prod-shell --from workstation.dev-a --vantage office-lan
+locus resolve production-host --capability shell --from workstation.dev-a --vantage office-lan
+```
+
+正常循环只有：
+
+```text
+resolve → probe（需要时）→ resolve
+```
+
+`resolve` 读取 world model 和已有 Observation，不调用 probe、不写 Observation。`probe` 执行 Provider 定义的 safe probe，并只写入 Link Observation；它不会执行 Route 的 operational action。
+
+`from` 和 `vantage` 是两个独立概念：
+
+- `from`：当前 operational Entity / actor；
+- `vantage`：reachability Observation 成立的网络观察位置。
+
+同一 workstation 可以位于 `office-lan`、`vpn` 或 `customer-site`；这些 Observation 不会混用。
+
+## Core Commands
+
+### `resolve`
+
+```text
+locus resolve <target> --capability <name> [--from <entity>] [--vantage <name>]
+```
+
+解析过程：
+
+```text
+runtime context
++ target / Binding
++ requested capability
+→ canonical target
+→ matching explicit Route
+→ ordered Links
+→ Provider-native context / NativeHint
+→ current evidence
+```
+
+Route cardinality contract：
+
+- 0 candidate：`unresolved`；
+- 1 candidate：`resolved`，返回 `route`；
+- 多个 candidate：`ambiguous`，返回 `candidates`。
+
+v0 不按 evidence、cost、YAML 顺序、Provider、hop 数或最近成功时间自动排名和选择 Route。Candidate 仅按 canonical ID 排序以获得稳定输出。
+
+### `probe`
+
+```text
+locus probe <link-or-route-id> [--from <entity>] [--vantage <name>] [--timeout <duration>]
+```
+
+Link probe 写入一条 Link Observation。Route probe 按声明顺序安全探测 constituent Links；只持久化实际探测的 Link Observation，前序失败后停止。Route Observation 永不持久化。
+
+Provider 安全边界：
+
+- FRP：验证配置和既有 endpoint；不启动 visitor；
+- SSH：验证 endpoint 和 SSH configuration；不建立 session、不执行远程命令；
+- Salt：只执行 `test.ping`。
+
+Probe failure 仍在 stdout 返回稳定 JSON，并使用退出码 `4`；诊断写 stderr。
+
+## Inspecting Locus
+
+这些命令用于理解、排错和调试，不是普通 resolve/probe 循环的前置步骤。
+
+| 命令 | 回答 |
+|---|---|
+| `locus context` | 当前 active Scope、imports、Binding、actor 和 vantage 是什么 |
+| `locus show <ref-or-id>` | 这个名字或声明对象是什么 |
+| `locus list [entity\|link\|route]` | Registry 中有哪些声明 |
+| `locus status [link-or-route-id]` | 已有 Link Observation 或动态聚合的 Route evidence 怎么说 |
+
+`show` 只负责 declaration、identity 和 reference resolution，不返回 Observation 或 runtime evidence。Binding 不会被无痕解引用：
+
+```text
+locus show production-host
+```
+
+明确输出：
+
+```text
+input_ref: production-host
+ref_type: binding
+canonical_target: environment.customer-a::host.prod-01
+object: <canonical Entity declaration>
+```
+
+`status` 是详细 diagnostics。Link status 读取指定 vantage 的持久化 Observation；Route status 每次从 constituent Link observations 动态聚合。`resolve` 已包含 evidence 时，正常用户不需要额外调用 `status`。
+
+## Registry Discovery
+
+正常使用不需要 `--registry`。Locus 从当前工作目录向上寻找：
+
+```text
+.locus/registry/scope.yaml
+```
+
+因此 nested working directory 也可直接运行：
+
+```text
+cd my-project/src/service
+locus resolve production-host --capability shell --from workstation.dev-a --vantage office-lan
+```
+
+`--registry` 只用于 override、automation、tests 和特殊多 Registry 场景。路径使用 Go 的跨平台路径能力处理，不假定 `/` 或 `C:\`。
+
+核心 CLI 在 Windows、Linux 和 macOS 上语义一致：
+
+```text
+locus resolve production-host --capability shell
+locus probe route.prod-shell
+locus status route.prod-shell
+```
+
+PowerShell 与 POSIX shell 的差异只影响可执行文件调用和 shell quoting，不进入 Locus 领域模型。Provider-native context 可以按平台返回 `ssh`、`pwsh`、`bash`、`frpc` 或 `salt` 等不同工具。
+
+## Command Flags
+
+`--json` 是所有命令可用的 presentation flag。其余 flags 只出现在语义需要它的命令中；无意义 flag 会被拒绝。
+
+| 命令 | 允许的 command flags |
+|---|---|
+| `init` | `--registry --scope-kind --scope-id` |
+| `validate` | `--registry` |
+| `list` | `--registry` |
+| `show` | `--registry` |
+| `context` | `--registry --from --vantage` |
+| `resolve` | `--registry --from --vantage --capability` |
+| `probe` | `--registry --from --vantage --timeout` |
+| `status` | `--registry --vantage` |
+
+例如 `locus validate --vantage office-lan` 会作为 unknown flag 拒绝，而不是接受后忽略。
+
+## Creating and Maintaining Registries
+
+Registry 作者和维护者使用：
+
+```text
+locus init --scope-kind project --scope-id project.example
+locus validate
+```
+
+`init` 默认创建当前目录下的 `.locus/registry`：
 
 ```text
 project/
@@ -48,18 +199,7 @@ project/
       └─ docs/
 ```
 
-初始化 Project：
-
-```powershell
-& $locus init `
-  --scope-kind project `
-  --scope-id project.example `
-  --registry .locus/registry
-```
-
-初始化 Environment 时将 `--scope-kind` 改为 `environment`。
-
-## Scope、Import 与 Binding
+### Scope、Import 与 Binding
 
 Environment manifest：
 
@@ -77,26 +217,14 @@ api_version: locus/v0
 scope:
   id: project.example
   kind: project
-
 imports:
   - alias: customer
     path: ../../../environments/customer-a/.locus/registry
-
 bindings:
   production-host: customer::host.prod-01
 ```
 
-`customer::host.prod-01` 加载后归一化为：
-
-```text
-environment.customer-a::host.prod-01
-```
-
-Import 只增加声明，不执行字段合并、override 或 precedence。
-
-## 声明对象
-
-v0 只有 Entity、Link 和 Route 三种声明对象。
+`customer::host.prod-01` 加载后归一化为 `environment.customer-a::host.prod-01`。Import 只增加 namespaced declarations，不执行 field merge、override 或 precedence。Binding 只表达 Project role → canonical Entity，不提供 capability。
 
 ### Entity
 
@@ -108,7 +236,7 @@ kind: host
 name: Customer A Production Host
 ```
 
-Entity 必须有稳定身份。端口、localhost endpoint、临时 tunnel 和 session 不应建模为 Entity。
+Entity 必须有稳定身份。端口、localhost endpoint、临时 tunnel 和 session 不建模为 Entity。
 
 ### Link
 
@@ -128,7 +256,7 @@ provider_data:
   credential_ref: secret://ssh/customer-a-prod
 ```
 
-Link 表示通过具体机制获得 operational reachability/capability。Secret 值不能写入 Registry；这里只保存引用。
+Link 表示通过具体机制获得 operational reachability/capability。Secret 值不能写入 Registry；只保存引用。
 
 ### Route
 
@@ -141,126 +269,40 @@ steps:
   - link: link.prod-ssh
 ```
 
-Route 是显式 ordered Link chain：
-
-- target 从最后一个 Link 的 `to` 推导；
-- provides 从各 Link 累计推导；
-- 前序 `provides` 必须满足后序 `requires`；
-- 不要求相邻 Link 满足严格的 `previous.to == next.from`。
-
-## CLI
-
-| 命令 | 用途 |
-|---|---|
-| `locus init` | 创建最小 Scope Registry |
-| `locus validate` | 校验 Scope、imports、bindings 和声明 |
-| `locus context` | 查看当前 Scope、imports、Binding 和 Runtime Context |
-| `locus list [entity\|link\|route]` | 列出声明对象 |
-| `locus show <id>` | 查看对象、canonical identity 和 evidence |
-| `locus resolve <target> --capability <name>` | 解析目标、Route 和 Provider-native context |
-| `locus check <link-or-route-id>` | 执行 safe probe 并追加 Link Observation |
-| `locus status [id]` | 查看 Link evidence 或 Route 聚合状态 |
-
-常用参数：
-
-| 参数 | 用途 |
-|---|---|
-| `--json` | 输出稳定 JSON |
-| `--registry <path>` | 指定 active Registry |
-| `--from <entity-ref>` | 指定当前 operational Entity |
-| `--vantage <name>` | 指定网络观察位置 |
-| `--timeout <duration>` | 设置 Check 超时 |
-
-## 基本工作流
-
-假设当前 Project 声明了 `workstation.dev-a`，并绑定了 `production-host`：
-
-```powershell
-$common = @(
-  "--registry", ".locus/registry",
-  "--from", "workstation.dev-a",
-  "--vantage", "office-lan",
-  "--json"
-)
-
-& $locus validate @common
-& $locus context @common
-& $locus list route @common
-& $locus show production-host @common
-& $locus resolve production-host --capability shell @common
-```
-
-`resolve` 返回：
-
-- canonical target；
-- selected Route；
-- 推导出的 capability；
-- 每个 Link 的 Provider 和 NativeHint；
-- 当前 vantage 下的 evidence status。
-
-它不会启动 FRP、建立 SSH session 或执行 Salt command。
-
-在外部工具已处于预期状态后，可以检查声明路径：
-
-```powershell
-& $locus check route.prod-shell @common
-& $locus status route.prod-shell @common
-& $locus resolve production-host --capability shell @common
-```
-
-第二次 Resolve 会使用 Check 写入的 Link Observation，Route evidence 可能从 `unknown` 变为 `success`、`failure` 或 `stale`。
+Route 是人工声明的 ordered Link chain：target 从最后一个 Link 的 `to` 推导；provides 从 ordered Links 累计；前序 `provides` 必须满足后序 `requires`。它不要求严格的 `previous.to == next.from`，也不触发自动寻路。
 
 ## Observation Store
 
 默认 Store：
 
-- Windows：`%LOCALAPPDATA%/locus-link/state.db`
-- Linux/macOS：`$XDG_STATE_HOME/locus-link/state.db`，未设置时为 `~/.local/state/locus-link/state.db`
+- Windows：`%LOCALAPPDATA%/locus-link/state.db`；
+- Linux/macOS：`$XDG_STATE_HOME/locus-link/state.db`，未设置时为 `~/.local/state/locus-link/state.db`。
 
-测试、隔离环境或临时运行可显式设置：
+测试或隔离运行可通过 `LOCUS_STATE_PATH` 将 Store 定向到 workspace 内。Observation 只使用 canonical Link ID 作为 subject，并记录 vantage。
 
-```powershell
-$env:LOCUS_STATE_PATH = "$PWD/temp/locus-state.db"
-```
+## Build and Verification
 
-Observation 只针对 canonical Link ID，并记录 vantage。Route 状态不单独存储，而是从其 Link Observation 聚合。
+需要 Go 1.26 或兼容版本。
 
-## 完整 E2E 案例
-
-可审阅的案例位于：
-
-```text
-test/e2e/case/
-```
-
-它包含：
-
-- 一个共享 Environment；
-- 两个由同一模板物化的 Project；
-- Project Binding 和 canonical identity；
-- FRP→SSH Route；
-- Salt Route；
-- 模拟设备状态；
-- Context、规范关系和 ordered Route 断言；
-- Salt NativeHint 与 Route status 断言；
-- success → failure → recovery 的 Observation 闭环；
-- 不同 Project/vantage 的 evidence 隔离。
-
-运行：
+PowerShell：
 
 ```powershell
+New-Item -ItemType Directory -Force temp/bin | Out-Null
+go build -o temp/bin/locus.exe ./cmd/locus
 ./test/reproduce.ps1
 ```
 
-运行产物保留在 `temp/e2e-run/`，包括可执行文件、物化 Registry、模拟设备和 SQLite，可用于检查与复现。
+POSIX shell：
 
-完整工作区测试：
-
-```powershell
+```sh
+mkdir -p temp/bin
+go build -o temp/bin/locus ./cmd/locus
 go test ./...
 ```
 
-## 设计文档
+可审阅 E2E declarations 和 simulated device state 位于 `test/e2e/case/`。完整运行产物保留在 `temp/e2e-run/`，包括 executable、materialized Registries、simulated devices 和 SQLite state。
+
+## Design Documents
 
 - [高层设计](documents/design-v0.md)
 - [v0 具体设计](documents/v0.md)

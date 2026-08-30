@@ -1,16 +1,21 @@
 package test
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
+
+	_ "modernc.org/sqlite"
 )
 
 func TestWorkspaceEndToEnd(t *testing.T) {
@@ -46,21 +51,29 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	deviceA := filepath.Join(root, "devices", "dev-a")
 
 	statePath := filepath.Join(root, "state", "state.db")
+	probeLog := filepath.Join(root, "probe-invocations.log")
 	env := append(os.Environ(),
 		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"LOCUS_STATE_PATH="+statePath,
 		"LOCUS_SIM_ROOT="+deviceA,
+		"LOCUS_SIM_LOG="+probeLog,
 	)
 
 	initResult := runCLI(t, locusExe, projectB, env, "init", "--scope-kind", "project", "--scope-id", "project.beta", "--registry", projectBRegistry, "--json")
 	assertStringAt(t, initResult, "scope", "id", "project.beta")
 	materializeProject(t, caseRoot, projectB, "project.beta", "workstation.dev-b", port)
 
-	common := []string{"--registry", projectARegistry, "--from", "workstation.dev-a", "--vantage", "office-lan", "--json"}
-	validate := runCLI(t, locusExe, projectA, env, append([]string{"validate"}, common...)...)
+	runtimeArgs := []string{"--from", "workstation.dev-a", "--vantage", "office-lan", "--json"}
+	validate := runCLI(t, locusExe, projectA, env, "validate", "--json")
 	assertBoolAt(t, validate, "valid", true)
+	runCLIExpectExit(t, locusExe, projectA, env, 2, "validate", "--vantage", "office-lan", "--json")
 
-	contextResult := runCLI(t, locusExe, projectA, env, append([]string{"context"}, common...)...)
+	nested := filepath.Join(projectA, "nested", "working", "directory")
+	mustMkdir(t, nested)
+	nestedValidation := runCLI(t, locusExe, nested, env, "validate", "--json")
+	assertBoolAt(t, nestedValidation, "valid", true)
+
+	contextResult := runCLI(t, locusExe, projectA, env, append([]string{"context"}, runtimeArgs...)...)
 	assertStringAt(t, contextResult, "active_scope", "id", "project.alpha")
 	assertStringAt(t, contextResult, "bindings", "production-host", "environment.customer-a::host.prod-01")
 	assertStringAt(t, contextResult, "runtime", "current_entity", "project.alpha::workstation.dev-a")
@@ -73,23 +86,32 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	}
 	assertImport(t, contextResult["imports"], "customer", "environment.customer-a")
 
-	list := runCLI(t, locusExe, projectA, env, append([]string{"list", "route"}, common...)...)
+	list := runCLI(t, locusExe, nested, env, "list", "route", "--json")
 	assertArrayContains(t, list["objects"], "project.alpha::route.prod-shell")
 	assertArrayContains(t, list["objects"], "project.alpha::route.prod-salt")
 
-	target := runCLI(t, locusExe, projectA, env, append([]string{"show", "production-host"}, common...)...)
+	target := runCLI(t, locusExe, projectA, env, "show", "production-host", "--json")
+	assertStringAt(t, target, "input_ref", "production-host")
+	assertStringAt(t, target, "ref_type", "binding")
+	assertStringAt(t, target, "canonical_target", "environment.customer-a::host.prod-01")
 	assertStringAt(t, target, "object", "canonical_id", "environment.customer-a::host.prod-01")
-	frpLink := runCLI(t, locusExe, projectA, env, append([]string{"show", "link.prod-frp"}, common...)...)
+	assertNoRuntimeEvidence(t, target)
+	frpLink := runCLI(t, locusExe, projectA, env, "show", "link.prod-frp", "--json")
+	assertStringAt(t, frpLink, "ref_type", "link")
 	assertStringAt(t, frpLink, "object", "from", "project.alpha::workstation.dev-a")
 	assertStringAt(t, frpLink, "object", "to", "environment.customer-a::frps.primary")
-	sshLink := runCLI(t, locusExe, projectA, env, append([]string{"show", "link.prod-ssh"}, common...)...)
+	assertNoRuntimeEvidence(t, frpLink)
+	sshLink := runCLI(t, locusExe, projectA, env, "show", "link.prod-ssh", "--json")
 	assertStringAt(t, sshLink, "object", "from", "project.alpha::workstation.dev-a")
 	assertStringAt(t, sshLink, "object", "to", "environment.customer-a::host.prod-01")
-	shellRoute := runCLI(t, locusExe, projectA, env, append([]string{"show", "route.prod-shell"}, common...)...)
+	assertNoRuntimeEvidence(t, sshLink)
+	shellRoute := runCLI(t, locusExe, projectA, env, "show", "route.prod-shell", "--json")
 	assertRouteSteps(t, shellRoute, "project.alpha::link.prod-frp", "project.alpha::link.prod-ssh")
+	assertNoRuntimeEvidence(t, shellRoute)
 
-	resolveArgs := append([]string{"resolve", "production-host", "--capability", "shell"}, common...)
+	resolveArgs := append([]string{"resolve", "production-host", "--capability", "shell"}, runtimeArgs...)
 	before := runCLI(t, locusExe, projectA, env, resolveArgs...)
+	assertStringAt(t, before, "status", "resolved")
 	assertStringAt(t, before, "canonical_target", "environment.customer-a::host.prod-01")
 	assertStringAt(t, before, "route", "derived_target", "environment.customer-a::host.prod-01")
 	assertStringAt(t, before, "route", "evidence_status", "unknown")
@@ -97,30 +119,43 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	assertArrayContains(t, route["derived_provides"], "tcp-forward.ssh")
 	assertArrayContains(t, route["derived_provides"], "shell")
 	assertResolvedProviders(t, route["steps"], "frp-stcp", "ssh")
+	assertObservationCount(t, statePath, 0)
+	assertProbeInvocations(t, probeLog)
 
-	check := runCLI(t, locusExe, projectA, env, append([]string{"check", "route.prod-shell"}, common...)...)
-	if observations, ok := check["observations"].([]any); !ok || len(observations) != 2 {
-		t.Fatalf("expected two observations, got %#v", check)
+	probe := runCLI(t, locusExe, projectA, env, append([]string{"probe", "route.prod-shell"}, runtimeArgs...)...)
+	assertStringAt(t, probe, "status", "success")
+	if observations, ok := probe["observations"].([]any); !ok || len(observations) != 2 {
+		t.Fatalf("expected two observations, got %#v", probe)
 	}
-	status := runCLI(t, locusExe, projectA, env, append([]string{"status", "route.prod-shell"}, common...)...)
+	assertObservationCount(t, statePath, 2)
+	assertProbeInvocations(t, probeLog, "frpc", "ssh")
+	status := runCLI(t, locusExe, projectA, env, "status", "route.prod-shell", "--vantage", "office-lan", "--json")
 	assertStringAt(t, status, "evidence", "status", "success")
 	after := runCLI(t, locusExe, projectA, env, resolveArgs...)
 	assertStringAt(t, after, "route", "evidence_status", "success")
-	observedSSH := runCLI(t, locusExe, projectA, env, append([]string{"show", "link.prod-ssh"}, common...)...)
-	assertObservation(t, observedSSH["observations"], "project.alpha::link.prod-ssh", "office-lan", "success")
+	observedSSH := runCLI(t, locusExe, projectA, env, "status", "link.prod-ssh", "--vantage", "office-lan", "--json")
+	assertStringAt(t, observedSSH, "evidence", "observation", "subject", "project.alpha::link.prod-ssh")
+	assertStringAt(t, observedSSH, "evidence", "observation", "vantage", "office-lan")
+	assertStringAt(t, observedSSH, "evidence", "observation", "status", "success")
+	linkProbe := runCLI(t, locusExe, projectA, env, append([]string{"probe", "link.prod-ssh"}, runtimeArgs...)...)
+	assertStringAt(t, linkProbe, "subject_type", "link")
+	assertObservation(t, linkProbe["observations"], "project.alpha::link.prod-ssh", "office-lan", "success")
+	assertObservationCount(t, statePath, 3)
+	assertProbeInvocations(t, probeLog, "frpc", "ssh", "ssh")
 
-	saltResolveArgs := append([]string{"resolve", "production-host", "--capability", "salt.ping"}, common...)
+	saltResolveArgs := append([]string{"resolve", "production-host", "--capability", "salt.ping"}, runtimeArgs...)
 	saltBefore := runCLI(t, locusExe, projectA, env, saltResolveArgs...)
 	assertStringAt(t, saltBefore, "route", "evidence_status", "unknown")
-	saltCheck := runCLI(t, locusExe, projectA, env, append([]string{"check", "route.prod-salt"}, common...)...)
-	if observations, ok := saltCheck["observations"].([]any); !ok || len(observations) != 1 {
-		t.Fatalf("expected one Salt observation, got %#v", saltCheck)
+	assertProbeInvocations(t, probeLog, "frpc", "ssh", "ssh")
+	saltProbe := runCLI(t, locusExe, projectA, env, append([]string{"probe", "route.prod-salt"}, runtimeArgs...)...)
+	if observations, ok := saltProbe["observations"].([]any); !ok || len(observations) != 1 {
+		t.Fatalf("expected one Salt observation, got %#v", saltProbe)
 	}
 	saltAfter := runCLI(t, locusExe, projectA, env, saltResolveArgs...)
 	assertStringAt(t, saltAfter, "route", "evidence_status", "success")
 	assertResolvedProviders(t, mustObjectAt(t, saltAfter, "route")["steps"], "salt")
 	assertNativeHint(t, saltAfter, "salt", "customer-a-prod-01", "test.ping", "--out=json")
-	saltStatus := runCLI(t, locusExe, projectA, env, append([]string{"status", "route.prod-salt"}, common...)...)
+	saltStatus := runCLI(t, locusExe, projectA, env, "status", "route.prod-salt", "--vantage", "office-lan", "--json")
 	assertStringAt(t, saltStatus, "evidence", "status", "success")
 
 	saltUp := filepath.Join(deviceA, "salt-up")
@@ -134,25 +169,41 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 		}
 	}
 	defer restoreSalt()
-	runCLIExpectExit(t, locusExe, projectA, env, 4, append([]string{"check", "route.prod-salt"}, common...)...)
-	failedSaltStatus := runCLI(t, locusExe, projectA, env, append([]string{"status", "route.prod-salt"}, common...)...)
+	failedProbe := runCLIExpectExitJSON(t, locusExe, projectA, env, 4, append([]string{"probe", "route.prod-salt"}, runtimeArgs...)...)
+	assertStringAt(t, failedProbe, "status", "failure")
+	assertObservation(t, failedProbe["observations"], "project.alpha::link.prod-salt", "office-lan", "failure")
+	failedSaltStatus := runCLI(t, locusExe, projectA, env, "status", "route.prod-salt", "--vantage", "office-lan", "--json")
 	assertStringAt(t, failedSaltStatus, "evidence", "status", "failure")
 	failedSaltResolve := runCLI(t, locusExe, projectA, env, saltResolveArgs...)
 	assertStringAt(t, failedSaltResolve, "route", "evidence_status", "failure")
 
 	restoreSalt()
-	runCLI(t, locusExe, projectA, env, append([]string{"check", "route.prod-salt"}, common...)...)
+	runCLI(t, locusExe, projectA, env, append([]string{"probe", "route.prod-salt"}, runtimeArgs...)...)
 	recoveredSalt := runCLI(t, locusExe, projectA, env, saltResolveArgs...)
 	assertStringAt(t, recoveredSalt, "route", "evidence_status", "success")
 
-	betaCommon := []string{"--registry", projectBRegistry, "--from", "workstation.dev-b", "--vantage", "device-b", "--json"}
-	betaContext := runCLI(t, locusExe, projectB, env, append([]string{"context"}, betaCommon...)...)
+	betaArgs := []string{"--from", "workstation.dev-b", "--vantage", "device-b", "--json"}
+	betaContext := runCLI(t, locusExe, projectB, env, append([]string{"context"}, betaArgs...)...)
 	assertStringAt(t, betaContext, "active_scope", "id", "project.beta")
 	assertStringAt(t, betaContext, "bindings", "production-host", "environment.customer-a::host.prod-01")
 	assertStringAt(t, betaContext, "runtime", "vantage", "device-b")
-	betaResolve := runCLI(t, locusExe, projectB, env, append([]string{"resolve", "production-host", "--capability", "shell"}, betaCommon...)...)
+	betaResolve := runCLI(t, locusExe, projectB, env, append([]string{"resolve", "production-host", "--capability", "shell"}, betaArgs...)...)
 	assertStringAt(t, betaResolve, "canonical_target", "environment.customer-a::host.prod-01")
 	assertStringAt(t, betaResolve, "route", "evidence_status", "unknown")
+	betaStatus := runCLI(t, locusExe, projectB, env, "status", "route.prod-shell", "--vantage", "device-b", "--json")
+	assertStringAt(t, betaStatus, "evidence", "status", "unknown")
+
+	unresolved := runCLIExpectExitJSON(t, locusExe, projectA, env, 3, append([]string{"resolve", "production-host", "--capability", "missing.capability"}, runtimeArgs...)...)
+	assertStringAt(t, unresolved, "status", "unresolved")
+
+	duplicateRoute := filepath.Join(projectARegistry, "routes", "alternate-shell.yaml")
+	mustWrite(t, duplicateRoute, "api_version: locus/v0\ntype: route\nid: route.alternate-shell\nsteps:\n  - link: link.prod-frp\n  - link: link.prod-ssh\n")
+	ambiguous := runCLIExpectExitJSON(t, locusExe, projectA, env, 3, resolveArgs...)
+	assertStringAt(t, ambiguous, "status", "ambiguous")
+	assertCandidateRoutes(t, ambiguous["candidates"], "project.alpha::route.alternate-shell", "project.alpha::route.prod-shell")
+	if err := os.Remove(duplicateRoute); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func repositoryRoot(t *testing.T) string {
@@ -263,6 +314,22 @@ func runCLIExpectExit(t *testing.T, executable, cwd string, env []string, want i
 	if !ok || exit.ExitCode() != want {
 		t.Fatalf("expected locus %s to exit %d, got %v\n%s", strings.Join(args, " "), want, err, output)
 	}
+}
+
+func runCLIExpectExitJSON(t *testing.T, executable, cwd string, env []string, want int, args ...string) map[string]any {
+	t.Helper()
+	command := exec.Command(executable, args...)
+	command.Dir, command.Env = cwd, env
+	output, err := command.Output()
+	exit, ok := err.(*exec.ExitError)
+	if !ok || exit.ExitCode() != want {
+		t.Fatalf("expected locus %s to exit %d, got %v\nstdout: %s", strings.Join(args, " "), want, err, output)
+	}
+	var result map[string]any
+	if unmarshalErr := json.Unmarshal(output, &result); unmarshalErr != nil {
+		t.Fatalf("invalid failure JSON from %s: %v\nstdout: %s\nstderr: %s", strings.Join(args, " "), unmarshalErr, output, exit.Stderr)
+	}
+	return result
 }
 
 func mustWrite(t *testing.T, path, content string) {
@@ -413,5 +480,75 @@ func assertObservation(t *testing.T, value any, subject, vantage, status string)
 	observation, ok := observations[0].(map[string]any)
 	if !ok || observation["subject"] != subject || observation["vantage"] != vantage || observation["status"] != status {
 		t.Fatalf("expected %s observation for %s at %s, got %#v", status, subject, vantage, value)
+	}
+}
+
+func assertNoRuntimeEvidence(t *testing.T, value map[string]any) {
+	t.Helper()
+	for _, key := range []string{"observation", "observations", "evidence", "evidence_status"} {
+		if _, exists := value[key]; exists {
+			t.Fatalf("show output unexpectedly contains %q: %#v", key, value)
+		}
+	}
+}
+
+func assertObservationCount(t *testing.T, statePath string, want int) {
+	t.Helper()
+	db, err := sql.Open("sqlite", statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM observations`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != want {
+		t.Fatalf("expected %d persisted link observations, got %d", want, count)
+	}
+	var routeCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM observations WHERE subject LIKE '%::route.%'`).Scan(&routeCount); err != nil {
+		t.Fatal(err)
+	}
+	if routeCount != 0 {
+		t.Fatalf("route observations must not be persisted, got %d", routeCount)
+	}
+}
+
+func assertProbeInvocations(t *testing.T, logPath string, expected ...string) {
+	t.Helper()
+	data, err := os.ReadFile(logPath)
+	if errors.Is(err, os.ErrNotExist) && len(expected) == 0 {
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual := strings.Fields(string(data))
+	if !slices.Equal(actual, expected) {
+		t.Fatalf("expected probe invocations %v, got %v", expected, actual)
+	}
+}
+
+func assertCandidateRoutes(t *testing.T, value any, expected ...string) {
+	t.Helper()
+	candidates, ok := value.([]any)
+	if !ok || len(candidates) != len(expected) {
+		t.Fatalf("expected candidate routes %v, got %#v", expected, value)
+	}
+	actual := make([]string, 0, len(candidates))
+	for _, value := range candidates {
+		candidate, ok := value.(map[string]any)
+		if !ok {
+			t.Fatalf("expected candidate object, got %#v", value)
+		}
+		id, ok := candidate["canonical_id"].(string)
+		if !ok {
+			t.Fatalf("candidate lacks canonical_id: %#v", candidate)
+		}
+		actual = append(actual, id)
+	}
+	if !slices.Equal(actual, expected) {
+		t.Fatalf("expected candidate routes %v, got %v", expected, actual)
 	}
 }

@@ -16,7 +16,7 @@
 ## Scope
 
 - 产品入口：`cmd/locus/main.go`、`internal/locus/`。
-- 用户契约：根目录 `README.md` 中的八个 CLI 命令。
+- 用户契约：根目录 `README.md` 中按 core、inspection、authoring 分层的 CLI。
 - 设计边界：`documents/design-v0.md`、`documents/v0.md`。
 - E2E 声明：`test/e2e/case/`；测试驱动：`test/e2e_test.go`；复现入口：`test/reproduce.ps1`。
 - 运行产物：`temp/e2e-run/`，必须保留供人工复现。
@@ -34,12 +34,13 @@
 
 ### 稳定产品边界
 
-- 保留 `init / validate / context / list / show / resolve / check / status` CLI contract。
+- CLI 外层核心固定为 `resolve / probe`；`context / show / list / status` 是 inspection，`init / validate` 是 authoring。
 - v0 声明对象只有 Scope、Entity、Link、Route；Capability 只作为 `requires/provides` 字符串和 Resolve 查询条件。
 - Scope import 是 namespaced additive composition；Binding 是 Project role → canonical Entity。
 - Route 是显式 ordered Link chain，不要求 `previous.to == next.from`；合法性由 operational applicability 与 `requires/provides` 决定。
 - Observation 只针对 canonical Link subject，并保留 vantage；Route evidence 从 Link Observation 聚合。
 - Resolve 返回 provider-native context；Locus 不执行 Route。
+- Resolve 的 0/1/多 Route 结果固定为 unresolved/resolved/ambiguous；不得隐式 ranking 或选择。
 - 新字段、Provider 或抽象必须由真实 CLI 案例证明需要；不为后置项创建空接口、目录或兼容层。
 
 ### 变更同步

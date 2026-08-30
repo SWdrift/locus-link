@@ -34,6 +34,20 @@ Locus 不接管原生机制，也不执行 Route。它描述可能性、评估�
 
 Skill 回答“这类操作怎么做”；Locus 回答“在这里涉及谁、哪条 Route、什么运行证据”。通用教程属于 Skill，易变的环境事实属于 Locus。
 
+外层产品心智模型只暴露两个核心原语：
+
+```text
+Resolve(context, target, capability)
+→ declared route + provider-native context + current evidence
+
+Probe(link/route)
+→ new Link observations
+```
+
+正常循环是 `resolve → probe（需要时）→ resolve`。Inspection 命令只解释声明和 Observation；authoring 命令只维护 Registry。用户不需要先理解完整领域模型才能执行一次 Resolve。
+
+Resolve 只匹配显式 Route，不承担 Planner 职责：零条 candidate 为 `unresolved`，一条为 `resolved`，多条为 `ambiguous` 并返回 candidates。Evidence 描述现实状态，但不用于自动排名或选择 Route。
+
 ## 2. 稳定语义
 
 Locus 的长期领域概念保持有限：

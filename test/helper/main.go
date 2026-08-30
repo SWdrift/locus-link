@@ -10,6 +10,22 @@ import (
 func main() {
 	name := strings.ToLower(filepath.Base(os.Args[0]))
 	root := os.Getenv("LOCUS_SIM_ROOT")
+	if logPath := os.Getenv("LOCUS_SIM_LOG"); logPath != "" {
+		log, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		if _, err := fmt.Fprintln(log, name); err != nil {
+			_ = log.Close()
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		if err := log.Close(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+	}
 	state := ""
 	switch {
 	case strings.HasPrefix(name, "frpc"):

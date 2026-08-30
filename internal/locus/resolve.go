@@ -34,10 +34,12 @@ type ResolvedRoute struct {
 }
 
 type ResolveResult struct {
-	InputTarget string        `json:"input_target"`
-	Target      string        `json:"canonical_target"`
-	Capability  string        `json:"capability"`
-	Route       ResolvedRoute `json:"route"`
+	Status      string          `json:"status"`
+	InputTarget string          `json:"input_target"`
+	Target      string          `json:"canonical_target"`
+	Capability  string          `json:"capability"`
+	Route       *ResolvedRoute  `json:"route,omitempty"`
+	Candidates  []ResolvedRoute `json:"candidates,omitempty"`
 }
 
 func (r *Registry) Resolve(ctx context.Context, targetRef, capability string, runtime RuntimeContext, providers *Providers, store *Store) (ResolveResult, error) {
@@ -45,27 +47,35 @@ func (r *Registry) Resolve(ctx context.Context, targetRef, capability string, ru
 	if err != nil {
 		return ResolveResult{}, err
 	}
-	var candidates []ResolvedRoute
+	result := ResolveResult{
+		Status:      "unresolved",
+		InputTarget: targetRef,
+		Target:      target,
+		Capability:  capability,
+	}
 	for _, route := range r.Routes {
-		candidate, applicable, err := r.resolveRoute(ctx, route, target, capability, runtime, providers, store)
-		if err != nil {
-			return ResolveResult{}, err
+		candidate, applicable, resolveErr := r.resolveRoute(ctx, route, target, capability, runtime, providers, store)
+		if resolveErr != nil {
+			return ResolveResult{}, resolveErr
 		}
 		if applicable {
-			candidates = append(candidates, candidate)
+			result.Candidates = append(result.Candidates, candidate)
 		}
 	}
-	if len(candidates) == 0 {
-		return ResolveResult{}, fmt.Errorf("no route provides %s to %s", capability, target)
-	}
-	sort.Slice(candidates, func(i, j int) bool {
-		left, right := evidenceRank(candidates[i].EvidenceStatus), evidenceRank(candidates[j].EvidenceStatus)
-		if left != right {
-			return left < right
-		}
-		return candidates[i].CanonicalID < candidates[j].CanonicalID
+	sort.Slice(result.Candidates, func(i, j int) bool {
+		return result.Candidates[i].CanonicalID < result.Candidates[j].CanonicalID
 	})
-	return ResolveResult{InputTarget: targetRef, Target: target, Capability: capability, Route: candidates[0]}, nil
+	switch len(result.Candidates) {
+	case 0:
+		return result, nil
+	case 1:
+		result.Status = "resolved"
+		result.Route = &result.Candidates[0]
+		result.Candidates = nil
+	default:
+		result.Status = "ambiguous"
+	}
+	return result, nil
 }
 
 func (r *Registry) resolveRoute(ctx context.Context, route *Route, target, capability string, runtime RuntimeContext, providers *Providers, store *Store) (ResolvedRoute, bool, error) {
@@ -149,17 +159,6 @@ func aggregateEvidence(steps []ResolvedStep) string {
 		return "stale"
 	}
 	return "unknown"
-}
-
-func evidenceRank(status string) int {
-	switch status {
-	case "success":
-		return 0
-	case "unknown", "stale":
-		return 1
-	default:
-		return 2
-	}
 }
 
 func (r *Registry) RouteEvidence(ctx context.Context, route *Route, vantage string, store *Store) (RouteEvidence, error) {

@@ -13,7 +13,7 @@
 - Route 不要求严格节点连续。FRP→SSH 通过 `tcp-forward.ssh` 的 provides/requires 组合，不创建 localhost endpoint、session 或 tunnel Entity。
 - Observation v0 只记录 canonical Link subject + vantage；Route 状态实时聚合，不落库。
 - Observation Store v0 是本机 SQLite，不建设 shared/global/remote Store abstraction。
-- CLI contract 固定为 `init / validate / context / list / show / resolve / check / status`。
+- CLI 外层 contract 是 `resolve / probe`；其余一级命令按 inspection 与 registry authoring 分层。
 
 ## Verified Implementation Baseline
 
@@ -21,7 +21,7 @@
 - Project 可以按本地路径 import Environment，alias 归一化到 `<scope-id>::<local-id>` canonical identity。
 - 已实现 FRP、SSH、Salt Provider：Validate、Render NativeHint、safe Probe；无通用 Execute。
 - FRP Probe 使用 `frpc verify` 和现有本地 endpoint；SSH Probe 使用 TCP 与 `ssh -G`；Salt Probe 只调用 `test.ping`。
-- Resolve 不启动 FRP、不建立 SSH session、不执行 Salt；Check 只验证既有状态并追加 Observation。
+- Resolve 不启动 FRP、不建立 SSH session、不执行 Salt、不调用 Probe；Probe 只验证既有状态并追加 Link Observation。
 - `LOCUS_STATE_PATH` 可将测试 Store 定向到工作区；生产默认使用 OS 本机 state 目录。
 - 当前需要 Runtime Context 的命令要求显式 `--from`；未传 `--vantage` 时退化为 host-specific vantage。该易用性需由真实使用再评估。
 
@@ -38,12 +38,13 @@
 
 完整 E2E 已验证：
 
-- 八个 CLI 命令的实际 subprocess contract。
+- Cobra CLI 的 core、inspection、authoring 分层和实际 subprocess contract。
 - active Scope、imports、Binding、cwd、current Entity、available Provider tools、vantage、Store path。
-- Entity/Link/Route 引用归一化、ordered Route steps、derived target/provides 和 Provider 顺序。
-- FRP/SSH Check 写入两条 success Observation，再次 Resolve 变为 success。
+- `show binding` 显式保留 input ref、ref type 和 canonical target；show 不返回 evidence。
+- Resolve 的 unresolved/resolved/ambiguous cardinality，不按 evidence 或其他因素自动选择。
+- FRP/SSH Probe 写入两条 success Observation，再次 Resolve 变为 success。
 - Salt NativeHint 精确为 `salt customer-a-prod-01 test.ping --out=json`。
-- Salt success → failure（退出码 4）→ recovery 会依次改变 Route status 与 Resolve evidence。
+- Salt success → failure（退出码 4 且 stdout 保持 JSON）→ recovery 会依次改变 Route status 与 Resolve evidence。
 - Project Beta 在 `device-b` 下不会复用 Alpha/`office-lan` 的不适用 evidence，Resolve 保持 unknown。
 
 运行：
@@ -58,7 +59,7 @@
 
 - Go cache 和 module cache 必须放在 `temp/.go-cache`、`temp/.go-mod-cache`、`temp/.go-path`。非隐藏 `temp/go-mod-cache` 会被 `go test ./...` 当作 module 子树扫描并失败。
 - Go module cache 文件可能是只读；若确需删除，应先用对应 `GOMODCACHE` 执行 `go clean -modcache`。当前规则是保留测试产物和缓存，不主动清理。
-- E2E 的 FRP/SSH TCP listener 只在测试进程期间存活。测试完成后手动 `check route.prod-shell` 失败是正确结果；重跑 `test/reproduce.ps1` 才能复现完整成功闭环。
+- E2E 的 FRP/SSH TCP listener 只在测试进程期间存活。测试完成后手动 `probe route.prod-shell` 失败是正确结果；重跑 `test/reproduce.ps1` 才能复现完整成功闭环。
 - Salt helper 不依赖 listener，可在保留的 `temp/e2e-run/` 中手动切换 `salt-up/salt-down` 观察 failure/recovery。
 - E2E source fixture 应保持可审阅并提交；动态端口、绝对 FRP config path、Project ID 和 workstation 只在物化时替换。
 - 新 Provider 应自报 executable；`Providers.Available` 从 Provider registry 推导并排序，避免新增 Provider 时维护重复列表。
