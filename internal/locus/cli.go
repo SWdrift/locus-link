@@ -51,6 +51,18 @@ type commandState struct {
 	json   bool
 }
 
+type runtimeStateAssembly struct {
+	registry  *Registry
+	runtime   RuntimeContext
+	statePath string
+}
+
+type observationStateAssembly struct {
+	registry  *Registry
+	vantage   string
+	statePath string
+}
+
 func (s *commandState) set(result any, err error) error {
 	s.result = result
 	if err == nil {
@@ -320,7 +332,7 @@ func (c *CLI) init(opts options) (any, error) {
 }
 
 func (c *CLI) validate(opts options) (any, error) {
-	registry, _, _, err := c.load(opts, false)
+	registry, err := c.loadRegistryDeclarations(opts)
 	if err != nil {
 		return nil, cliError{code: 2, err: err}
 	}
@@ -334,21 +346,21 @@ func (c *CLI) validate(opts options) (any, error) {
 }
 
 func (c *CLI) context(opts options) (any, error) {
-	registry, runtime, statePath, err := c.load(opts, true)
+	assembly, err := c.assembleContextState(opts)
 	if err != nil {
 		return nil, cliError{code: 2, err: err}
 	}
-	imports := make([]map[string]string, 0, len(registry.Aliases))
-	for alias, scope := range registry.Aliases {
+	imports := make([]map[string]string, 0, len(assembly.registry.Aliases))
+	for alias, scope := range assembly.registry.Aliases {
 		imports = append(imports, map[string]string{"alias": alias, "scope_id": scope})
 	}
 	sort.Slice(imports, func(i, j int) bool { return imports[i]["alias"] < imports[j]["alias"] })
 	return map[string]any{
-		"active_scope":      registry.Manifest.Scope,
+		"active_scope":      assembly.registry.Manifest.Scope,
 		"imports":           imports,
-		"bindings":          registry.Bindings,
-		"runtime":           runtime,
-		"observation_store": statePath,
+		"bindings":          assembly.registry.Bindings,
+		"runtime":           assembly.runtime,
+		"observation_store": assembly.statePath,
 	}, nil
 }
 
@@ -360,7 +372,7 @@ func (c *CLI) list(opts options, args []string) (any, error) {
 	if kind != "" && kind != "entity" && kind != "link" && kind != "route" {
 		return nil, cliError{code: 2, err: fmt.Errorf("invalid kind %q", kind)}
 	}
-	registry, _, _, err := c.load(opts, false)
+	registry, err := c.loadRegistryDeclarations(opts)
 	if err != nil {
 		return nil, cliError{code: 2, err: err}
 	}
@@ -368,7 +380,7 @@ func (c *CLI) list(opts options, args []string) (any, error) {
 }
 
 func (c *CLI) show(opts options, inputRef string) (any, error) {
-	registry, _, _, err := c.load(opts, false)
+	registry, err := c.loadRegistryDeclarations(opts)
 	if err != nil {
 		return nil, cliError{code: 2, err: err}
 	}
@@ -400,16 +412,16 @@ func (c *CLI) resolve(target string, opts options) (any, error) {
 	if opts.Capability == "" {
 		return nil, cliError{code: 2, err: errors.New("--capability is required")}
 	}
-	registry, runtime, statePath, err := c.load(opts, true)
+	assembly, err := c.assembleRuntimeState(opts)
 	if err != nil {
 		return nil, cliError{code: 2, err: err}
 	}
-	store, err := OpenStore(statePath)
+	store, err := OpenStore(assembly.statePath)
 	if err != nil {
 		return nil, err
 	}
 	defer store.Close()
-	result, err := registry.Resolve(context.Background(), target, opts.Capability, runtime, NewProviders(), store)
+	result, err := assembly.registry.Resolve(context.Background(), target, opts.Capability, assembly.runtime, NewProviders(), store)
 	if err != nil {
 		return nil, err
 	}
@@ -420,11 +432,11 @@ func (c *CLI) resolve(target string, opts options) (any, error) {
 }
 
 func (c *CLI) probe(parent context.Context, inputRef string, opts options) (any, error) {
-	registry, runtime, statePath, err := c.load(opts, true)
+	assembly, err := c.assembleRuntimeState(opts)
 	if err != nil {
 		return nil, cliError{code: 2, err: err}
 	}
-	id, kind, err := registry.ResolveAny(inputRef)
+	id, kind, err := assembly.registry.ResolveAny(inputRef)
 	if err != nil {
 		return nil, cliError{code: 2, err: err}
 	}
@@ -435,7 +447,7 @@ func (c *CLI) probe(parent context.Context, inputRef string, opts options) (any,
 	if err != nil || timeout <= 0 {
 		return nil, cliError{code: 2, err: fmt.Errorf("invalid --timeout %q", opts.Timeout)}
 	}
-	store, err := OpenStore(statePath)
+	store, err := OpenStore(assembly.statePath)
 	if err != nil {
 		return nil, err
 	}
@@ -445,8 +457,8 @@ func (c *CLI) probe(parent context.Context, inputRef string, opts options) (any,
 
 	links := []string{id}
 	if kind == "route" {
-		links = make([]string, 0, len(registry.Routes[id].Steps))
-		for _, step := range registry.Routes[id].Steps {
+		links = make([]string, 0, len(assembly.registry.Routes[id].Steps))
+		for _, step := range assembly.registry.Routes[id].Steps {
 			links = append(links, step.Link)
 		}
 	}
@@ -454,15 +466,15 @@ func (c *CLI) probe(parent context.Context, inputRef string, opts options) (any,
 	observations := make([]Observation, 0, len(links))
 	failed := false
 	for _, linkID := range links {
-		link := registry.Links[linkID]
-		if link.From != runtime.CurrentEntity {
-			return nil, cliError{code: 2, err: fmt.Errorf("link %s is not applicable from %s", linkID, runtime.CurrentEntity)}
+		link := assembly.registry.Links[linkID]
+		if link.From != assembly.runtime.CurrentEntity {
+			return nil, cliError{code: 2, err: fmt.Errorf("link %s is not applicable from %s", linkID, assembly.runtime.CurrentEntity)}
 		}
 		provider, ok := providers.Get(link.Provider)
 		if !ok {
 			return nil, cliError{code: 2, err: fmt.Errorf("unsupported provider %s", link.Provider)}
 		}
-		observation, appendErr := store.Append(ctx, provider.Probe(ctx, link, runtime))
+		observation, appendErr := store.Append(ctx, provider.Probe(ctx, link, assembly.runtime))
 		if appendErr != nil {
 			return nil, appendErr
 		}
@@ -490,86 +502,130 @@ func (c *CLI) probe(parent context.Context, inputRef string, opts options) (any,
 }
 
 func (c *CLI) status(args []string, opts options) (any, error) {
-	registry, runtime, statePath, err := c.load(opts, false)
+	assembly, err := c.assembleObservationState(opts)
 	if err != nil {
 		return nil, cliError{code: 2, err: err}
 	}
-	store, err := OpenStore(statePath)
+	store, err := OpenStore(assembly.statePath)
 	if err != nil {
 		return nil, err
 	}
 	defer store.Close()
 	ctx := context.Background()
 	if len(args) == 1 {
-		id, kind, resolveErr := registry.ResolveAny(args[0])
+		id, kind, resolveErr := assembly.registry.ResolveAny(args[0])
 		if resolveErr != nil {
 			return nil, cliError{code: 2, err: resolveErr}
 		}
 		switch kind {
 		case "link":
-			observation, latestErr := store.Latest(ctx, id, runtime.Vantage)
+			observation, latestErr := store.Latest(ctx, id, assembly.vantage)
 			return map[string]any{
 				"link_id":  id,
-				"vantage":  runtime.Vantage,
+				"vantage":  assembly.vantage,
 				"evidence": classifyLinkEvidence(id, observation),
 			}, latestErr
 		case "route":
-			evidence, evidenceErr := registry.RouteEvidence(ctx, registry.Routes[id], runtime.Vantage, store)
-			return map[string]any{"route_id": id, "vantage": runtime.Vantage, "evidence": evidence}, evidenceErr
+			evidence, evidenceErr := assembly.registry.RouteEvidence(ctx, assembly.registry.Routes[id], assembly.vantage, store)
+			return map[string]any{"route_id": id, "vantage": assembly.vantage, "evidence": evidence}, evidenceErr
 		default:
 			return nil, cliError{code: 2, err: errors.New("status accepts only Link or Route")}
 		}
 	}
 	counts := map[string]int{"failure": 0, "stale": 0, "unknown": 0, "success": 0}
-	for id := range registry.Links {
-		observation, latestErr := store.Latest(ctx, id, runtime.Vantage)
+	for id := range assembly.registry.Links {
+		observation, latestErr := store.Latest(ctx, id, assembly.vantage)
 		if latestErr != nil {
 			return nil, latestErr
 		}
 		counts[classifyLinkEvidence(id, observation).Status]++
 	}
-	return map[string]any{"vantage": runtime.Vantage, "links": counts}, nil
+	return map[string]any{"vantage": assembly.vantage, "links": counts}, nil
 }
 
-func (c *CLI) load(opts options, runtimeRequired bool) (*Registry, RuntimeContext, string, error) {
+func (c *CLI) loadRegistryDeclarations(opts options) (*Registry, error) {
 	root := opts.Registry
 	if root == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
-			return nil, RuntimeContext{}, "", err
+			return nil, err
 		}
 		root, err = DiscoverRegistry(cwd)
 		if err != nil {
-			return nil, RuntimeContext{}, "", err
+			return nil, err
 		}
 	}
-	registry, err := LoadRegistry(root)
+	return LoadRegistry(root)
+}
+
+func (c *CLI) assembleContextState(opts options) (runtimeStateAssembly, error) {
+	assembly, err := c.assembleRuntimeState(opts)
 	if err != nil {
-		return nil, RuntimeContext{}, "", err
+		return runtimeStateAssembly{}, err
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
-		return nil, RuntimeContext{}, "", err
+		return runtimeStateAssembly{}, err
 	}
-	runtime := RuntimeContext{CWD: cwd, AvailableTools: NewProviders().Available(), Vantage: opts.Vantage}
-	if runtime.Vantage == "" {
-		host, hostErr := os.Hostname()
-		if hostErr != nil {
-			return nil, RuntimeContext{}, "", hostErr
-		}
-		runtime.Vantage = "host:" + host
+	assembly.runtime.CWD = cwd
+	assembly.runtime.AvailableTools = NewProviders().Available()
+	return assembly, nil
+}
+
+func (c *CLI) assembleRuntimeState(opts options) (runtimeStateAssembly, error) {
+	registry, err := c.loadRegistryDeclarations(opts)
+	if err != nil {
+		return runtimeStateAssembly{}, err
 	}
-	if opts.From != "" {
-		runtime.CurrentEntity, err = registry.ResolveEntity(opts.From)
-		if err != nil {
-			return nil, RuntimeContext{}, "", err
-		}
-	} else if runtimeRequired {
-		return nil, RuntimeContext{}, "", errors.New("--from is required for this command")
+	runtime, err := requiredRuntime(registry, opts)
+	if err != nil {
+		return runtimeStateAssembly{}, err
 	}
 	statePath, err := DefaultStatePath()
 	if err != nil {
-		return nil, RuntimeContext{}, "", err
+		return runtimeStateAssembly{}, err
 	}
-	return registry, runtime, statePath, nil
+	return runtimeStateAssembly{registry: registry, runtime: runtime, statePath: statePath}, nil
+}
+
+func (c *CLI) assembleObservationState(opts options) (observationStateAssembly, error) {
+	registry, err := c.loadRegistryDeclarations(opts)
+	if err != nil {
+		return observationStateAssembly{}, err
+	}
+	vantage, err := observationVantage(opts)
+	if err != nil {
+		return observationStateAssembly{}, err
+	}
+	statePath, err := DefaultStatePath()
+	if err != nil {
+		return observationStateAssembly{}, err
+	}
+	return observationStateAssembly{registry: registry, vantage: vantage, statePath: statePath}, nil
+}
+
+func requiredRuntime(registry *Registry, opts options) (RuntimeContext, error) {
+	vantage, err := observationVantage(opts)
+	if err != nil {
+		return RuntimeContext{}, err
+	}
+	if opts.From == "" {
+		return RuntimeContext{}, errors.New("--from is required for this command")
+	}
+	currentEntity, err := registry.ResolveEntity(opts.From)
+	if err != nil {
+		return RuntimeContext{}, err
+	}
+	return RuntimeContext{CurrentEntity: currentEntity, Vantage: vantage}, nil
+}
+
+func observationVantage(opts options) (string, error) {
+	if opts.Vantage != "" {
+		return opts.Vantage, nil
+	}
+	host, err := os.Hostname()
+	if err != nil {
+		return "", err
+	}
+	return "host:" + host, nil
 }
