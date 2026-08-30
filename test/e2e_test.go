@@ -119,11 +119,37 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	saltAfter := runCLI(t, locusExe, projectA, env, saltResolveArgs...)
 	assertStringAt(t, saltAfter, "route", "evidence_status", "success")
 	assertResolvedProviders(t, mustObjectAt(t, saltAfter, "route")["steps"], "salt")
+	assertNativeHint(t, saltAfter, "salt", "customer-a-prod-01", "test.ping", "--out=json")
+	saltStatus := runCLI(t, locusExe, projectA, env, append([]string{"status", "route.prod-salt"}, common...)...)
+	assertStringAt(t, saltStatus, "evidence", "status", "success")
+
+	saltUp := filepath.Join(deviceA, "salt-up")
+	saltDown := filepath.Join(deviceA, "salt-down")
+	if err := os.Rename(saltUp, saltDown); err != nil {
+		t.Fatal(err)
+	}
+	restoreSalt := func() {
+		if _, err := os.Stat(saltDown); err == nil {
+			_ = os.Rename(saltDown, saltUp)
+		}
+	}
+	defer restoreSalt()
+	runCLIExpectExit(t, locusExe, projectA, env, 4, append([]string{"check", "route.prod-salt"}, common...)...)
+	failedSaltStatus := runCLI(t, locusExe, projectA, env, append([]string{"status", "route.prod-salt"}, common...)...)
+	assertStringAt(t, failedSaltStatus, "evidence", "status", "failure")
+	failedSaltResolve := runCLI(t, locusExe, projectA, env, saltResolveArgs...)
+	assertStringAt(t, failedSaltResolve, "route", "evidence_status", "failure")
+
+	restoreSalt()
+	runCLI(t, locusExe, projectA, env, append([]string{"check", "route.prod-salt"}, common...)...)
+	recoveredSalt := runCLI(t, locusExe, projectA, env, saltResolveArgs...)
+	assertStringAt(t, recoveredSalt, "route", "evidence_status", "success")
 
 	betaCommon := []string{"--registry", projectBRegistry, "--from", "workstation.dev-b", "--vantage", "device-b", "--json"}
 	betaContext := runCLI(t, locusExe, projectB, env, append([]string{"context"}, betaCommon...)...)
 	assertStringAt(t, betaContext, "active_scope", "id", "project.beta")
 	assertStringAt(t, betaContext, "bindings", "production-host", "environment.customer-a::host.prod-01")
+	assertStringAt(t, betaContext, "runtime", "vantage", "device-b")
 	betaResolve := runCLI(t, locusExe, projectB, env, append([]string{"resolve", "production-host", "--capability", "shell"}, betaCommon...)...)
 	assertStringAt(t, betaResolve, "canonical_target", "environment.customer-a::host.prod-01")
 	assertStringAt(t, betaResolve, "route", "evidence_status", "unknown")
@@ -226,6 +252,17 @@ func runCLI(t *testing.T, executable, cwd string, env []string, args ...string) 
 		t.Fatalf("invalid JSON from %s: %v\n%s", strings.Join(args, " "), err, output)
 	}
 	return result
+}
+
+func runCLIExpectExit(t *testing.T, executable, cwd string, env []string, want int, args ...string) {
+	t.Helper()
+	command := exec.Command(executable, args...)
+	command.Dir, command.Env = cwd, env
+	output, err := command.CombinedOutput()
+	exit, ok := err.(*exec.ExitError)
+	if !ok || exit.ExitCode() != want {
+		t.Fatalf("expected locus %s to exit %d, got %v\n%s", strings.Join(args, " "), want, err, output)
+	}
 }
 
 func mustWrite(t *testing.T, path, content string) {
@@ -337,6 +374,32 @@ func assertResolvedProviders(t *testing.T, value any, expected ...string) {
 		step, ok := steps[index].(map[string]any)
 		if !ok || step["provider"] != provider {
 			t.Fatalf("expected provider %d to be %s, got %#v", index, provider, steps[index])
+		}
+	}
+}
+
+func assertNativeHint(t *testing.T, result map[string]any, executable string, args ...string) {
+	t.Helper()
+	route := mustObjectAt(t, result, "route")
+	steps, ok := route["steps"].([]any)
+	if !ok || len(steps) != 1 {
+		t.Fatalf("expected one resolved step, got %#v", route["steps"])
+	}
+	step, ok := steps[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected resolved step object, got %#v", steps[0])
+	}
+	hint, ok := step["native_hint"].(map[string]any)
+	if !ok || hint["executable"] != executable {
+		t.Fatalf("expected %s NativeHint, got %#v", executable, step["native_hint"])
+	}
+	actual, ok := hint["args"].([]any)
+	if !ok || len(actual) != len(args) {
+		t.Fatalf("expected NativeHint args %v, got %#v", args, hint["args"])
+	}
+	for index, expected := range args {
+		if actual[index] != expected {
+			t.Fatalf("expected NativeHint arg %d to be %s, got %#v", index, expected, actual[index])
 		}
 	}
 }

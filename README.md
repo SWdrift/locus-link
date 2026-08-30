@@ -241,7 +241,10 @@ test/e2e/case/
 - FRP→SSH Route；
 - Salt Route；
 - 模拟设备状态；
-- Context、关系、路径和 Observation 闭环断言。
+- Context、规范关系和 ordered Route 断言；
+- Salt NativeHint 与 Route status 断言；
+- success → failure → recovery 的 Observation 闭环；
+- 不同 Project/vantage 的 evidence 隔离。
 
 运行：
 
