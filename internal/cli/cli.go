@@ -1,4 +1,4 @@
-package locus
+package cli
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"locus-link/internal/locus"
 	"os"
 	"path/filepath"
 	"sort"
@@ -52,13 +53,13 @@ type commandState struct {
 }
 
 type runtimeStateAssembly struct {
-	registry  *Registry
-	runtime   RuntimeContext
+	registry  *locus.Registry
+	runtime   locus.RuntimeContext
 	statePath string
 }
 
 type observationStateAssembly struct {
-	registry  *Registry
+	registry  *locus.Registry
 	vantage   string
 	statePath string
 }
@@ -316,7 +317,7 @@ func (c *CLI) init(opts options) (any, error) {
 			return nil, err
 		}
 	}
-	manifest := Manifest{APIVersion: "locus/v0", Scope: Scope{ID: opts.ScopeID, Kind: opts.ScopeKind}}
+	manifest := locus.Manifest{APIVersion: "locus/v0", Scope: locus.Scope{ID: opts.ScopeID, Kind: opts.ScopeKind}}
 	data, err := yaml.Dump(manifest, yaml.WithV3Defaults())
 	if err != nil {
 		return nil, err
@@ -416,12 +417,12 @@ func (c *CLI) resolve(target string, opts options) (any, error) {
 	if err != nil {
 		return nil, cliError{code: 2, err: err}
 	}
-	store, err := OpenStore(assembly.statePath)
+	store, err := locus.OpenStore(assembly.statePath)
 	if err != nil {
 		return nil, err
 	}
 	defer store.Close()
-	result, err := assembly.registry.Resolve(context.Background(), target, opts.Capability, assembly.runtime, NewProviders(), store)
+	result, err := assembly.registry.Resolve(context.Background(), target, opts.Capability, assembly.runtime, locus.NewProviders(), store)
 	if err != nil {
 		return nil, err
 	}
@@ -447,7 +448,7 @@ func (c *CLI) probe(parent context.Context, inputRef string, opts options) (any,
 	if err != nil || timeout <= 0 {
 		return nil, cliError{code: 2, err: fmt.Errorf("invalid --timeout %q", opts.Timeout)}
 	}
-	store, err := OpenStore(assembly.statePath)
+	store, err := locus.OpenStore(assembly.statePath)
 	if err != nil {
 		return nil, err
 	}
@@ -462,8 +463,8 @@ func (c *CLI) probe(parent context.Context, inputRef string, opts options) (any,
 			links = append(links, step.Link)
 		}
 	}
-	providers := NewProviders()
-	observations := make([]Observation, 0, len(links))
+	providers := locus.NewProviders()
+	observations := make([]locus.Observation, 0, len(links))
 	failed := false
 	for _, linkID := range links {
 		link := assembly.registry.Links[linkID]
@@ -506,7 +507,7 @@ func (c *CLI) status(args []string, opts options) (any, error) {
 	if err != nil {
 		return nil, cliError{code: 2, err: err}
 	}
-	store, err := OpenStore(assembly.statePath)
+	store, err := locus.OpenStore(assembly.statePath)
 	if err != nil {
 		return nil, err
 	}
@@ -523,7 +524,7 @@ func (c *CLI) status(args []string, opts options) (any, error) {
 			return map[string]any{
 				"link_id":  id,
 				"vantage":  assembly.vantage,
-				"evidence": classifyLinkEvidence(id, observation),
+				"evidence": locus.ClassifyLinkEvidence(id, observation),
 			}, latestErr
 		case "route":
 			evidence, evidenceErr := assembly.registry.RouteEvidence(ctx, assembly.registry.Routes[id], assembly.vantage, store)
@@ -538,24 +539,24 @@ func (c *CLI) status(args []string, opts options) (any, error) {
 		if latestErr != nil {
 			return nil, latestErr
 		}
-		counts[classifyLinkEvidence(id, observation).Status]++
+		counts[locus.ClassifyLinkEvidence(id, observation).Status]++
 	}
 	return map[string]any{"vantage": assembly.vantage, "links": counts}, nil
 }
 
-func (c *CLI) loadRegistryDeclarations(opts options) (*Registry, error) {
+func (c *CLI) loadRegistryDeclarations(opts options) (*locus.Registry, error) {
 	root := opts.Registry
 	if root == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
 			return nil, err
 		}
-		root, err = DiscoverRegistry(cwd)
+		root, err = locus.DiscoverRegistry(cwd)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return LoadRegistry(root)
+	return locus.LoadRegistry(root)
 }
 
 func (c *CLI) assembleContextState(opts options) (runtimeStateAssembly, error) {
@@ -568,7 +569,7 @@ func (c *CLI) assembleContextState(opts options) (runtimeStateAssembly, error) {
 		return runtimeStateAssembly{}, err
 	}
 	assembly.runtime.CWD = cwd
-	assembly.runtime.AvailableTools = NewProviders().Available()
+	assembly.runtime.AvailableTools = locus.NewProviders().Available()
 	return assembly, nil
 }
 
@@ -581,7 +582,7 @@ func (c *CLI) assembleRuntimeState(opts options) (runtimeStateAssembly, error) {
 	if err != nil {
 		return runtimeStateAssembly{}, err
 	}
-	statePath, err := DefaultStatePath()
+	statePath, err := locus.DefaultStatePath()
 	if err != nil {
 		return runtimeStateAssembly{}, err
 	}
@@ -597,26 +598,26 @@ func (c *CLI) assembleObservationState(opts options) (observationStateAssembly, 
 	if err != nil {
 		return observationStateAssembly{}, err
 	}
-	statePath, err := DefaultStatePath()
+	statePath, err := locus.DefaultStatePath()
 	if err != nil {
 		return observationStateAssembly{}, err
 	}
 	return observationStateAssembly{registry: registry, vantage: vantage, statePath: statePath}, nil
 }
 
-func requiredRuntime(registry *Registry, opts options) (RuntimeContext, error) {
+func requiredRuntime(registry *locus.Registry, opts options) (locus.RuntimeContext, error) {
 	vantage, err := observationVantage(opts)
 	if err != nil {
-		return RuntimeContext{}, err
+		return locus.RuntimeContext{}, err
 	}
 	if opts.From == "" {
-		return RuntimeContext{}, errors.New("--from is required for this command")
+		return locus.RuntimeContext{}, errors.New("--from is required for this command")
 	}
 	currentEntity, err := registry.ResolveEntity(opts.From)
 	if err != nil {
-		return RuntimeContext{}, err
+		return locus.RuntimeContext{}, err
 	}
-	return RuntimeContext{CurrentEntity: currentEntity, Vantage: vantage}, nil
+	return locus.RuntimeContext{CurrentEntity: currentEntity, Vantage: vantage}, nil
 }
 
 func observationVantage(opts options) (string, error) {

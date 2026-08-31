@@ -1,4 +1,4 @@
-package locus
+package cli
 
 import (
 	"bytes"
@@ -94,4 +94,14 @@ func writeDeclarationTestRegistry(t *testing.T, root string) {
 			t.Fatal(err)
 		}
 	}
+}
+
+func workspaceTestPath(t *testing.T, elements ...string) string {
+	t.Helper()
+	parts := append([]string{"..", "..", "temp", "unit-tests"}, elements...)
+	path, err := filepath.Abs(filepath.Join(parts...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path
 }

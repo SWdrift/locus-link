@@ -64,42 +64,18 @@
 
 ## Task Board
 
-### Next Vertical Slice — PostgreSQL
+### Current Vertical Slice — WebUI
 
-- [ ] 由 `production-db` 案例冻结最小 Entity stable facts，不引入万能 Connection/property bag。
-- [ ] 增加 PostgreSQL Provider 的 Validate、`psql` native context 和窄 Safe Probe；Secret 仅使用 reference，不执行 SQL。
-- [ ] 让 Resolve 返回 target Entity facts、Binding 解释和 Entity/Link/Route documentation references；实现引用归一化、存在性校验和稳定去重。
-- [ ] 将 PostgreSQL fixture/helper/E2E 加入 `test/e2e/case/`，验证 `resolve → probe → resolve`、文档发现和 Secret 边界。
+- [ ] 建立本机 HTTP 服务、Vue 工程和嵌入式静态资源，真实读取当前 Registry context。
+- [ ] 完成 Graph、Status、Knowledge、Resolve、Validate 和 safe Probe 的 Web 体验；Profile/vantage 由启动默认值并允许页面切换。
+- [ ] 完成 CLI/Web 共用 fixture 的浏览器集成测试，覆盖 evidence 更新、vantage 隔离、Markdown containment 和 Secret 边界。
+- [ ] 每个阶段完成时运行 `go test ./...` 与 `test/reproduce.ps1`，保留 `temp/e2e-run/` 并提交阶段代码。
 
-### Pending Semantic Validation
+Workspace、Scope、Registry Source 和本地 Store 的目标边界以 [`documents/design/Workspace与Registry设计.md`](documents/design/Workspace与Registry设计.md) 为准；现行 `locus/v0` 公共契约在实现迁移前保持不变。
 
-- [ ] 用真实 Gitea + FRP + Worker CI/CD fixture 验证显式 deploy Route；先确认当前 applicability 阻塞点，再决定最小 step input/output 语义。
-- [ ] PostgreSQL 与 Gitea 案例稳定后，冻结 CLI、Agent 与 read-oriented WebUI 共用的读取 contract。
+### Deferred Domain Cases
 
-### Deferred Structural Cleanup
+- [ ] PostgreSQL：冻结 database Entity stable facts，补 Provider、Resolve documentation discovery 和完整 E2E。
+- [ ] Gitea + FRP + Worker CI/CD：验证显式 deploy Route 的最小 step input/output 语义。
 
-- [ ] 只在上述 slices 形成明确变化轴后重构 `internal/locus` package；不先按 declaration/Registry/CLI/Provider 预建目录或接口。
-
-各任务的代码证据和公共契约偏差统一维护在 [`documents/current-architecture.md`](documents/current-architecture.md) 的“公共契约符合度”中；Task Board 只保留可执行修改项。
-
-## 演进路线
-
-各阶段沿同一条 operational path 语义逐步增加能力。勾选状态随项目进展更新：
-
-- [x] **Declaration**：声明 Entity、Link、Route、Binding 和相关文档，保存“我们知道应当怎样访问”。
-- [x] **Resolve**：结合 Project、调用现场和 Observation，解释显式 Route，并返回原生工具所需的上下文。
-- [ ] **Plan / Compilation**：把 Route 转换为明确、可检查的执行计划，补齐步骤依赖和运行输入。
-- [ ] **Instantiate**：为一次具体调用解析凭据引用、临时端口和其他运行参数。
-- [ ] **Instance**：表示这一次已经实例化的 Route 及其临时资源和状态。
-- [ ] **Execute**：按计划调用 Provider 对应的原生机制，不抽象成万能 `host.exec()`。
-- [ ] **Supervise / Teardown**：跟踪运行状态，并在完成或失败后释放隧道、会话等临时资源。
-- [x] **Observation**：当前记录 safe probe 的实际证据；未来继续承接执行过程和结果的观测。
-- [ ] **WebUI**：通过与 CLI、Agent 相同的 Locus Core 展示 Graph、Status 和 Knowledge。
-
-```text
-             Locus Core
-          /      |       \
-        CLI     Agent     WebUI
-```
-
-这是一条连续演进路线，不为 Planner、Executor、Runtime 或 WebUI 复制领域模型。后续层继续使用现有 Entity、Link、Route、provider-native mechanism、Observation 和 documentation references。
+代码证据和公共契约偏差统一维护在 [`documents/current-architecture.md`](documents/current-architecture.md)；Task Board 只保留可执行修改项。

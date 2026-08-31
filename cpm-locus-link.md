@@ -23,12 +23,16 @@
 - CLI、Agent 与未来 WebUI 共享同一个 Locus Core / truth source；初始 WebUI 可围绕 Graph、Status、Knowledge 做 read-oriented 视图。
 - Observation Store v0 是本机 SQLite，不建设 shared/global/remote Store abstraction。
 - CLI 当前外层 contract 是 `resolve / probe`；其余一级命令按 inspection 与 registry authoring 分层。
+- Locus 当前目标采用 local-first Workspace：用户 Locus Home 管理 Catalog、Profile、远程缓存和本地 Workspace SQLite；项目可以使用 managed Registry 或 embedded `.locus/registry`。
+- Scope 是声明所有权、命名空间和组合的一等边界；Project、Environment、shared infrastructure 是角色，不形成不同领域模型。
+- Effective View 只包含 active Scope、显式 import 闭包和当前 Profile attachments，不合并 Catalog 中全部 Scope。
+- Git 与远程文件系统只是只读 Registry Source；所有 Probe 在本机执行并写入本机 Observation Store，不建设远程 Probe、Observation 上报或透明双写。
 
 ## Documentation Architecture
 
 - 用户、Agent、Registry 作者和自动化直接依赖的 CLI、JSON 与 YAML 统一放在 `documents/design/contracts/`，视为需要兼容或显式升级的公共契约。
 - Provider Go interface、Resolver、Observation Store 和 SQLite schema 当前是内部契约或实现细节，不因被记录而成为外部兼容承诺。
-- `documents/design/系统设计.md` 保持 Declaration → Resolve / Probe → Provider → Observation 的连续内部叙事；只有出现独立受众、生命周期或多份稳定设计后才拆专题。
+- `documents/design/Workspace与Registry设计.md` 维护 Locus Home、Scope、Registry Source、项目关联、组合和本地 Store 归属；`documents/design/系统设计.md` 从 Canonical Declared View 开始维护 Resolve / Probe → Provider → Observation 的 Core 处理链。
 - `documents/design/数据流与存储设计.md` 维护来源、变换、ownership、持久化、freshness 和 Secret 血缘，不复制公共 schema 或 SQLite 具体表结构。
 - `documents/current-architecture.md` 记录当前代码映射、支持范围和公共契约偏差，不承担目标契约。
 
@@ -42,7 +46,7 @@
 
 ## Verified Implementation Baseline
 
-- Go module，单一 `locus` executable；实现集中在 `internal/locus/`，没有 app/domain/ports 脚手架。
+- Go module，单一 `locus` executable；Cobra adapter 位于 `internal/cli/`，领域模型、Resolver、Provider 和 Store 位于 `internal/locus/`。
 - Project 可以按本地路径 import Environment，alias 归一化到 `<scope-id>::<local-id>` canonical identity。
 - 已实现 FRP、SSH、Salt Provider：Validate、Render NativeHint、safe Probe；无通用 Execute。
 - FRP Probe 使用 `frpc verify` 和现有本地 endpoint；SSH Probe 使用 TCP 与 `ssh -G`；Salt Probe 只调用 `test.ping`。

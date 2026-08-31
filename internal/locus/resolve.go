@@ -108,7 +108,7 @@ func (r *Registry) resolveRoute(ctx context.Context, route *Route, target, capab
 		if err != nil {
 			return ResolvedRoute{}, false, err
 		}
-		evidence := classifyLinkEvidence(link.CanonicalID, observation)
+		evidence := ClassifyLinkEvidence(link.CanonicalID, observation)
 		result.Steps = append(result.Steps, ResolvedStep{LinkID: link.CanonicalID, Provider: link.Provider, NativeHint: hint, Evidence: evidence})
 		for _, provided := range link.Provides {
 			available[provided] = true
@@ -125,7 +125,7 @@ func (r *Registry) resolveRoute(ctx context.Context, route *Route, target, capab
 	return result, true, nil
 }
 
-func classifyLinkEvidence(linkID string, observation *Observation) LinkEvidence {
+func ClassifyLinkEvidence(linkID string, observation *Observation) LinkEvidence {
 	status := "unknown"
 	if observation != nil {
 		if !observation.ExpiresAt.IsZero() && observation.ExpiresAt.Before(time.Now()) {
@@ -169,7 +169,7 @@ func (r *Registry) RouteEvidence(ctx context.Context, route *Route, vantage stri
 		if err != nil {
 			return result, err
 		}
-		evidence := classifyLinkEvidence(step.Link, observation)
+		evidence := ClassifyLinkEvidence(step.Link, observation)
 		result.Links = append(result.Links, evidence)
 		steps = append(steps, ResolvedStep{Evidence: evidence})
 	}

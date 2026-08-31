@@ -8,7 +8,8 @@
 - [公共契约](contracts/README.md)：用户、Agent、Registry 作者和自动化可以依赖的稳定接口。
   - [CLI 契约](contracts/CLI契约.md)：命令、flags、JSON、副作用和退出码。
   - [声明契约](contracts/声明契约.md)：Registry、YAML schema、identity、引用和 Provider data。
-- [系统设计](系统设计.md)：Declaration、Resolve、Provider、Probe 和 Observation 的内部协作。
+- [Workspace 与 Registry 设计](Workspace与Registry设计.md)：Locus Home、Scope、Registry Source、项目关联、组合和本地 Observation 归属。
+- [系统设计](系统设计.md)：Canonical Declared View、Resolve、Provider、Probe 和 Observation 的内部协作。
 - [数据流与存储设计](数据流与存储设计.md)：数据来源、变换、持久化、ownership 和 Secret 血缘。
 - [测试设计](测试设计.md)：公共契约和内部不变量的验证场景。
 - [当前实现快照](../current-architecture.md)：当前代码、E2E 覆盖和契约偏差。
@@ -16,7 +17,7 @@
 ## 阅读顺序
 
 - 用户和 Registry 作者：产品设计 → 公共契约。
-- 实现者：产品设计 → 公共契约 → 系统设计 → 数据流与存储设计 → 测试设计 → 当前实现快照。
+- 实现者：产品设计 → 公共契约 → Workspace 与 Registry 设计 → 系统设计 → 数据流与存储设计 → 测试设计 → 当前实现快照。
 
 ## 管理规则
 
