@@ -1,0 +1,5 @@
+api_version: locus/v0
+type: route
+id: route.cache-admin
+steps:
+  - link: link.cache-admin

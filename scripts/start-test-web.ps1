@@ -2,11 +2,45 @@
 param(
     [ValidatePattern('^127\.0\.0\.1:\d{1,5}$')]
     [string]$Address = '127.0.0.1:7070',
+    [ValidatePattern('^127\.0\.0\.1:\d{1,5}$')]
+    [string]$FrontendAddress = '127.0.0.1:5173',
     [switch]$Refresh,
+    [switch]$Dev,
     [switch]$NoBrowser
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Wait-TcpEndpoint {
+    param(
+        [Diagnostics.Process]$TargetProcess,
+        [string]$HostName,
+        [int]$Port,
+        [string]$Label
+    )
+
+    $ready = $false
+    $deadline = [DateTime]::UtcNow.AddSeconds(15)
+    while (-not $ready -and [DateTime]::UtcNow -lt $deadline) {
+        if ($TargetProcess.HasExited) {
+            throw "$Label exited with code $($TargetProcess.ExitCode)"
+        }
+        $client = [Net.Sockets.TcpClient]::new()
+        try {
+            $client.Connect($HostName, $Port)
+            $ready = $true
+        }
+        catch {
+            Start-Sleep -Milliseconds 150
+        }
+        finally {
+            $client.Dispose()
+        }
+    }
+    if (-not $ready) {
+        throw "$Label did not listen at ${HostName}:$Port within 15 seconds"
+    }
+}
 $repo = Split-Path -Parent $PSScriptRoot
 $runRoot = Join-Path $repo 'temp/e2e-run'
 $locus = Join-Path $runRoot 'bin/locus.exe'
@@ -24,12 +58,16 @@ if ($Refresh -or ($required | Where-Object { -not (Test-Path -LiteralPath $_) })
 
 $hostName, $portText = $Address -split ':', 2
 $port = [int]$portText
+$frontendHostName, $frontendPortText = $FrontendAddress -split ':', 2
+$frontendPort = [int]$frontendPortText
 $url = "http://$Address/graph"
 $oldStatePath = $env:LOCUS_STATE_PATH
 $oldSimRoot = $env:LOCUS_SIM_ROOT
 $oldSimLog = $env:LOCUS_SIM_LOG
 $oldPath = $env:PATH
+$oldApiOrigin = $env:LOCUS_API_ORIGIN
 $process = $null
+$frontendProcess = $null
 
 try {
     $env:LOCUS_STATE_PATH = $state
@@ -46,36 +84,48 @@ try {
     )
     $process = Start-Process -FilePath $locus -ArgumentList $arguments -WorkingDirectory $project -NoNewWindow -PassThru
 
-    $ready = $false
-    $deadline = [DateTime]::UtcNow.AddSeconds(15)
-    while (-not $ready -and [DateTime]::UtcNow -lt $deadline) {
-        if ($process.HasExited) {
-            throw "locus web exited with code $($process.ExitCode)"
+    Wait-TcpEndpoint -TargetProcess $process -HostName $hostName -Port $port -Label 'locus web'
+
+    if ($Dev) {
+        $ui = Join-Path $repo 'internal/web/ui'
+        $vite = Join-Path $ui 'node_modules/vite/bin/vite.js'
+        $nodeCommand = Get-Command node -CommandType Application -ErrorAction SilentlyContinue
+        if ($null -eq $nodeCommand) {
+            throw 'Node.js executable was not found on PATH.'
         }
-        $client = [Net.Sockets.TcpClient]::new()
-        try {
-            $client.Connect($hostName, $port)
-            $ready = $true
+        if (-not (Test-Path -LiteralPath $vite)) {
+            throw "Vite was not found at $vite. Run pnpm install in internal/web/ui first."
         }
-        catch {
-            Start-Sleep -Milliseconds 150
-        }
-        finally {
-            $client.Dispose()
-        }
-    }
-    if (-not $ready) {
-        throw "locus web did not listen at $Address within 15 seconds"
+
+        $env:LOCUS_API_ORIGIN = "http://$Address"
+        $viteArguments = @(
+            "`"$vite`"",
+            '--host', $frontendHostName,
+            '--port', $frontendPort
+        )
+        $frontendProcess = Start-Process -FilePath $nodeCommand.Source -ArgumentList $viteArguments -WorkingDirectory $ui -NoNewWindow -PassThru
+        Wait-TcpEndpoint -TargetProcess $frontendProcess -HostName $frontendHostName -Port $frontendPort -Label 'Vite'
+        $url = "http://$FrontendAddress/graph"
     }
 
-    Write-Host "测试页面已启动：$url"
-    Write-Host '按 Ctrl+C 停止服务。'
+    Write-Host "Web debug page started: $url"
+    Write-Host 'Press Ctrl+C to stop both servers.'
     if (-not $NoBrowser) {
         Start-Process $url
     }
-    Wait-Process -Id $process.Id
+    while (-not $process.HasExited -and ($null -eq $frontendProcess -or -not $frontendProcess.HasExited)) {
+        Start-Sleep -Milliseconds 250
+    }
+    if ($process.HasExited) {
+        throw "locus web exited with code $($process.ExitCode)"
+    }
+    throw "Vite exited with code $($frontendProcess.ExitCode)"
 }
 finally {
+    if ($null -ne $frontendProcess -and -not $frontendProcess.HasExited) {
+        Stop-Process -Id $frontendProcess.Id
+        $frontendProcess.WaitForExit()
+    }
     if ($null -ne $process -and -not $process.HasExited) {
         Stop-Process -Id $process.Id
         $process.WaitForExit()
@@ -83,5 +133,6 @@ finally {
     $env:LOCUS_STATE_PATH = $oldStatePath
     $env:LOCUS_SIM_ROOT = $oldSimRoot
     $env:LOCUS_SIM_LOG = $oldSimLog
+    $env:LOCUS_API_ORIGIN = $oldApiOrigin
     $env:PATH = $oldPath
 }

@@ -1,0 +1,12 @@
+api_version: locus/v0
+type: link
+id: link.repository-access
+from: {{WORKSTATION}}
+to: customer::repository.platform
+provider: ssh
+provides: [git.read, git.write]
+provider_data:
+  user: git
+  host: 127.0.0.1
+  port: 22033
+  credential_ref: secret://ssh/customer-a-repository

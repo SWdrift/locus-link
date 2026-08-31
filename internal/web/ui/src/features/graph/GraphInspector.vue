@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ElAlert, ElButton, ElInput, ElMenu, ElMenuItem, ElSpace, ElTabPane, ElTabs } from 'element-plus'
-import { computed, ref } from 'vue'
+import { RefreshRight } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
-import type { EvidenceStatus, GraphView, ProbeResult, ResolveResult, StatusView } from '../../api'
-import StatusBadge from '../../components/StatusBadge.vue'
+import type { GraphView, ProbeResult, ResolveResult, StatusView } from '../../domain/locus'
+import GraphResolvePanel from './GraphResolvePanel.vue'
+import GraphRoutePanel from './GraphRoutePanel.vue'
+import GraphSelectionPanel from './GraphSelectionPanel.vue'
+import type { GraphSelection } from './graph-types'
 
-const props = defineProps<{
+defineProps<{
   graph: GraphView
   status?: StatusView
   operationalReady: boolean
@@ -19,59 +21,104 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ probe: [subject: string]; resolve: []; relayout: [] }>()
 const selectedRoute = defineModel<string>('selectedRoute', { required: true })
-const selectedLink = defineModel<string>('selectedLink', { required: true })
+const selection = defineModel<GraphSelection | null>('selection', { required: true })
 const target = defineModel<string>('target', { required: true })
 const capability = defineModel<string>('capability', { required: true })
 const { t } = useI18n()
 const inspectorTab = ref('routes')
-const activeRoute = computed(() => props.graph.routes.find(route => route.canonical_id === selectedRoute.value))
-const selectedLinkView = computed(() => props.graph.links.find(link => link.canonical_id === selectedLink.value))
-const linkStatus = computed(() => new Map(props.status?.links.map(item => [item.link_id, item.status]) ?? []))
-const routeStatus = (routeID: string): EvidenceStatus => props.status?.routes.find(item => item.route_id === routeID)?.evidence.status ?? 'unknown'
-const shortID = (value: string) => value.split('::').at(-1) ?? value
+
+watch(selection, () => {
+  if (selection.value) inspectorTab.value = 'selection'
+})
 </script>
 
 <template>
-  <aside class="inspector-panel">
-    <section class="inspector-selection">
-      <div class="inspector-heading"><span class="eyebrow">{{ t('graph.routeList') }} / {{ t('status.links') }}</span><ElButton text size="small" @click="emit('relayout')">{{ t('graph.relayout') }}</ElButton></div>
-      <ElTabs v-model="inspectorTab" stretch>
-        <ElTabPane :label="t('graph.routeList')" name="routes">
-          <ElSpace direction="vertical" fill :size="8">
-            <ElMenu :default-active="selectedRoute" @select="selectedRoute = $event">
-              <ElMenuItem v-for="route in graph.routes" :key="route.canonical_id" :index="route.canonical_id">
-                <span class="menu-item-content"><span><strong>{{ shortID(route.canonical_id) }}</strong><small>{{ route.steps.length }} {{ t('status.steps') }}</small></span><StatusBadge :status="routeStatus(route.canonical_id)" /></span>
-              </ElMenuItem>
-            </ElMenu>
-            <ElButton v-if="activeRoute" type="primary" size="small" :loading="probing" :disabled="!operationalReady" @click="emit('probe', activeRoute.canonical_id)">{{ t('graph.probeRoute') }}</ElButton>
-          </ElSpace>
-        </ElTabPane>
-        <ElTabPane :label="t('status.links')" name="links">
-          <ElSpace direction="vertical" fill :size="8">
-            <ElMenu :default-active="selectedLink" @select="selectedLink = $event">
-              <ElMenuItem v-for="link in graph.links" :key="link.canonical_id" :index="link.canonical_id">
-                <span class="menu-item-content"><span class="technical-id">{{ shortID(link.canonical_id) }}</span><StatusBadge :status="linkStatus.get(link.canonical_id) ?? 'unknown'" /></span>
-              </ElMenuItem>
-            </ElMenu>
-            <div v-if="selectedLinkView" class="selected-detail">
-              <strong class="technical-id">{{ selectedLinkView.canonical_id }}</strong><small>{{ selectedLinkView.provider }}</small>
-              <ElButton type="primary" size="small" :loading="probing" :disabled="!operationalReady" @click="emit('probe', selectedLinkView.canonical_id)">{{ t('graph.probeLink') }}</ElButton>
-            </div>
-          </ElSpace>
-        </ElTabPane>
-      </ElTabs>
-    </section>
+  <aside class="graph-inspector">
+    <header class="graph-inspector__header">
+      <div>
+        <span>{{ t('graph.inspector') }}</span>
+        <h2>{{ t('graph.details') }}</h2>
+      </div>
+      <ElButton text size="small" :icon="RefreshRight" @click="emit('relayout')">{{ t('graph.relayout') }}</ElButton>
+    </header>
 
-    <section class="resolve-box">
-      <span class="eyebrow">{{ t('graph.resolve') }}</span>
-      <label><span>{{ t('graph.target') }}</span><ElInput v-model="target" size="small" /></label>
-      <label><span>{{ t('graph.capability') }}</span><ElInput v-model="capability" size="small" /></label>
-      <ElButton type="primary" size="small" :loading="resolving" :disabled="!operationalReady || !target || !capability" @click="emit('resolve')">{{ t('graph.resolveRoute') }}</ElButton>
-      <ElAlert v-if="resolveResult" type="success" :closable="false" :title="t('graph.resolveStatus.' + resolveResult.status)"><span class="technical-id">{{ resolveResult.route?.canonical_id ?? t('graph.candidates', { count: resolveResult.candidates?.length ?? 0 }) }}</span></ElAlert>
-      <ElAlert v-if="resolveError" type="error" :closable="false" :title="resolveError.message" />
-    </section>
-    <ElAlert v-if="probeResult" type="success" :closable="false" :title="t('graph.probeResult', { status: t('status.' + probeResult.status) })" :description="t('graph.observationsWritten', { count: probeResult.observations.length })" />
+    <ElTabs v-model="inspectorTab" stretch>
+      <ElTabPane :label="t('graph.routes')" name="routes">
+        <GraphRoutePanel
+          v-model="selectedRoute"
+          :graph="graph"
+          :status="status"
+          :operational-ready="operationalReady"
+          :probing="probing"
+          @probe="emit('probe', $event)"
+        />
+      </ElTabPane>
+
+      <ElTabPane :label="t('graph.selection')" name="selection">
+        <GraphSelectionPanel
+          v-model="selection"
+          :graph="graph"
+          :status="status"
+          :operational-ready="operationalReady"
+          :probing="probing"
+          @probe="emit('probe', $event)"
+        />
+      </ElTabPane>
+
+      <ElTabPane :label="t('graph.resolve')" name="resolve">
+        <GraphResolvePanel
+          v-model:target="target"
+          v-model:capability="capability"
+          :operational-ready="operationalReady"
+          :resolving="resolving"
+          :resolve-result="resolveResult"
+          :resolve-error="resolveError"
+          @resolve="emit('resolve')"
+        />
+      </ElTabPane>
+    </ElTabs>
+
+    <ElAlert
+      v-if="probeResult"
+      type="success"
+      :closable="false"
+      :title="t('graph.probeResult', { status: t(`status.${probeResult.status}`) })"
+      :description="t('graph.observationsWritten', { count: probeResult.observations.length })"
+    />
     <ElAlert v-if="probeError" type="error" :closable="false" :title="probeError.message" />
     <ElAlert v-if="statusError" type="error" :closable="false" :title="statusError.message" />
   </aside>
 </template>
+
+<style scoped>
+.graph-inspector {
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--locus-space-4);
+  padding: var(--locus-space-5);
+  overflow: auto;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--surface-panel);
+}
+
+.graph-inspector__header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--locus-space-3);
+}
+
+.graph-inspector__header span {
+  color: var(--text-muted);
+  font-size: var(--locus-font-size-sm);
+}
+
+.graph-inspector__header h2 {
+  margin-top: var(--locus-space-1);
+  font-size: var(--locus-font-size-base);
+  font-weight: var(--locus-font-weight-strong);
+}
+</style>

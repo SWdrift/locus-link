@@ -1,0 +1,6 @@
+api_version: locus/v0
+type: route
+id: route.worker-control
+steps:
+  - link: link.ci-control
+  - link: link.worker-control

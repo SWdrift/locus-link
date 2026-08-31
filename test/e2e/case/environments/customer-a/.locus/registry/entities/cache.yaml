@@ -1,0 +1,11 @@
+api_version: locus/v0
+type: entity
+id: cache.primary
+kind: cache
+name: 主缓存
+labels:
+  engine: redis
+  tier: production
+documentation:
+  - ref: ../docs/platform-topology.md#数据服务
+    title: 数据服务

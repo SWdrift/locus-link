@@ -1,0 +1,8 @@
+api_version: locus/v0
+type: entity
+id: repository.platform
+kind: repository
+name: 平台代码库
+documentation:
+  - ref: ../docs/platform-topology.md#交付链路
+    title: 交付链路

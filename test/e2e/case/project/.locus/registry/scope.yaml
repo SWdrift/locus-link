@@ -7,3 +7,9 @@ imports:
     path: ../../../../environments/customer-a/.locus/registry
 bindings:
   production-host: customer::host.prod-01
+  edge-gateway: customer::gateway.edge
+  production-db: customer::database.primary
+  production-cache: customer::cache.primary
+  source-repository: customer::repository.platform
+  ci-runner: customer::ci.runner
+  job-worker: customer::worker.jobs

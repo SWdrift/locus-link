@@ -1,0 +1,10 @@
+api_version: locus/v0
+type: link
+id: link.worker-control
+from: customer::ci.runner
+to: customer::worker.jobs
+provider: salt
+requires: [ci.manage]
+provides: [jobs.control]
+provider_data:
+  minion_id: customer-a-worker-jobs

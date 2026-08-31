@@ -1,0 +1,12 @@
+api_version: locus/v0
+type: link
+id: link.ci-control
+from: {{WORKSTATION}}
+to: customer::ci.runner
+provider: ssh
+provides: [ci.manage]
+provider_data:
+  user: ci-operator
+  host: 127.0.0.1
+  port: 22034
+  credential_ref: secret://ssh/customer-a-ci

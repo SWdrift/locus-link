@@ -1,0 +1,5 @@
+api_version: locus/v0
+type: route
+id: route.edge-shell
+steps:
+  - link: link.edge-shell

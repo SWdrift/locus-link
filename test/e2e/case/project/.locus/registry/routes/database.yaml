@@ -1,0 +1,6 @@
+api_version: locus/v0
+type: route
+id: route.database-admin
+steps:
+  - link: link.edge-shell
+  - link: link.database-admin

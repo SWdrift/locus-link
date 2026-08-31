@@ -1,0 +1,8 @@
+api_version: locus/v0
+type: entity
+id: ci.runner
+kind: runner
+name: CI Runner
+documentation:
+  - ref: ../docs/platform-topology.md#交付链路
+    title: 交付链路

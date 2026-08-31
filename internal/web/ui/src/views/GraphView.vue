@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { ElAlert, ElSkeleton, ElTag } from 'element-plus'
-import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getGraph, probe, resolveRoute } from '../api'
 import AsyncState from '../components/AsyncState.vue'
@@ -10,17 +8,17 @@ import GraphCanvas from '../features/graph/GraphCanvas.vue'
 import GraphInspector from '../features/graph/GraphInspector.vue'
 import { layoutGraph } from '../features/graph/graph-layout'
 import type { GraphLayout } from '../features/graph/graph-layout'
+import type { GraphSelection } from '../features/graph/graph-types'
 import { useOperationalContext } from '../operational-context'
 import { useStatusQuery } from '../queries'
-import '../features/graph/graph.css'
 
 const { t } = useI18n()
 const context = useOperationalContext()
-const graph = useQuery({ queryKey: ['graph'], queryFn: getGraph })
-const status = useStatusQuery()
+const graphQuery = useQuery({ queryKey: ['graph'], queryFn: getGraph })
+const statusQuery = useStatusQuery()
 const queryClient = useQueryClient()
 const selectedRoute = ref('')
-const selectedLink = ref('')
+const selection = ref<GraphSelection | null>(null)
 const target = ref('')
 const capability = ref('shell')
 const layout = ref<GraphLayout>()
@@ -30,80 +28,199 @@ const layoutRevision = ref(0)
 let layoutRequest = 0
 
 async function calculateLayout() {
-  const value = graph.data.value
-  if (!value || !value.entities.length) return
+  const graph = graphQuery.data.value
+  if (!graph?.entities.length) return
+
   const request = ++layoutRequest
   layoutPending.value = true
   layoutError.value = null
   try {
-    const result = await layoutGraph(value)
+    const result = await layoutGraph(graph)
     if (request !== layoutRequest) return
     layout.value = result
     layoutRevision.value += 1
   } catch (error) {
-    if (request === layoutRequest) layoutError.value = error instanceof Error ? error : new Error(String(error))
+    if (request === layoutRequest) {
+      layoutError.value = error instanceof Error ? error : new Error(String(error))
+    }
   } finally {
     if (request === layoutRequest) layoutPending.value = false
   }
 }
 
-watch(() => graph.data.value, value => {
-  if (!value) return
-  if (!value.routes.some(route => route.canonical_id === selectedRoute.value)) selectedRoute.value = value.routes[0]?.canonical_id ?? ''
-  if (!value.links.some(link => link.canonical_id === selectedLink.value)) selectedLink.value = ''
-  if (!target.value) target.value = value.bindings[0]?.role ?? value.entities[0]?.canonical_id ?? ''
+watch(() => graphQuery.data.value, (graph) => {
+  if (!graph) return
+
+  if (!graph.routes.some(route => route.canonical_id === selectedRoute.value)) {
+    selectedRoute.value = graph.routes[0]?.canonical_id ?? ''
+  }
+
+  const selectionExists = selection.value?.kind === 'entity'
+    ? graph.entities.some(entity => entity.canonical_id === selection.value?.id)
+    : graph.links.some(link => link.canonical_id === selection.value?.id)
+  if (!selectionExists) {
+    const firstEntity = graph.entities[0]
+    selection.value = firstEntity ? { kind: 'entity', id: firstEntity.canonical_id } : null
+  }
+
+  if (!target.value) target.value = graph.bindings[0]?.role ?? graph.entities[0]?.canonical_id ?? ''
   void calculateLayout()
 }, { immediate: true })
 
-const activeRoute = computed(() => graph.data.value?.routes.find(route => route.canonical_id === selectedRoute.value))
+const activeRoute = computed(() => graphQuery.data.value?.routes.find(route => route.canonical_id === selectedRoute.value))
 const activeSteps = computed(() => new Set(activeRoute.value?.steps ?? []))
-const linkStatus = computed(() => new Map(status.data.value?.links.map(item => [item.link_id, item.status]) ?? []))
-const empty = computed(() => Boolean(graph.data.value && !graph.data.value.entities.length))
+const linkStatus = computed(() => new Map(statusQuery.data.value?.links.map(item => [item.link_id, item.status]) ?? []))
+const empty = computed(() => Boolean(graphQuery.data.value && !graphQuery.data.value.entities.length))
 const operationalReady = computed(() => Boolean(context.from && context.vantage))
-const resolveMutation = useMutation({ mutationFn: () => resolveRoute(target.value, capability.value, context.from, context.vantage) })
+const resolveMutation = useMutation({
+  mutationFn: () => resolveRoute(target.value, capability.value, context.from, context.vantage),
+})
 const probeMutation = useMutation({
   mutationFn: (subject: string) => probe(subject, context.from, context.vantage),
-  onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['status'] }) },
+  onSuccess: async () => {
+    await queryClient.invalidateQueries({ queryKey: ['status'] })
+  },
 })
 </script>
 
 <template>
-  <section class="graph-page">
+  <section class="graph-view">
     <PageHeader :eyebrow="t('graph.eyebrow')" :title="t('graph.title')">
       <template #actions>
-        <div class="summary-pills" aria-live="polite">
-          <ElTag effect="plain" round>{{ graph.data.value?.entities.length ?? 0 }} {{ t('graph.entities') }}</ElTag>
-          <ElTag effect="plain" round>{{ graph.data.value?.links.length ?? 0 }} {{ t('graph.links') }}</ElTag>
-          <ElTag effect="plain" round>{{ graph.data.value?.routes.length ?? 0 }} {{ t('graph.routes') }}</ElTag>
+        <div class="graph-view__counts" aria-live="polite">
+          <span><strong>{{ graphQuery.data.value?.entities.length ?? 0 }}</strong> {{ t('graph.entities') }}</span>
+          <span><strong>{{ graphQuery.data.value?.links.length ?? 0 }}</strong> {{ t('graph.links') }}</span>
+          <span><strong>{{ graphQuery.data.value?.routes.length ?? 0 }}</strong> {{ t('graph.routes') }}</span>
         </div>
       </template>
     </PageHeader>
 
-    <AsyncState :loading="graph.isPending.value" :error="graph.error.value" :empty="empty" :empty-text="t('graph.empty')">
-      <ElSkeleton v-if="layoutPending" :rows="6" animated :aria-label="t('graph.layout')" />
-      <ElAlert v-else-if="layoutError" type="error" :closable="false" :title="t('common.error')" :description="layoutError.message" />
-      <div v-else-if="layout && graph.data.value" class="graph-workspace">
-        <GraphCanvas :key="layout.fingerprint + layoutRevision" :layout="layout" :link-status="linkStatus" :active-steps="activeSteps" :selected-link="selectedLink" @select-link="selectedLink = $event" />
-        <GraphInspector
-          v-model:selected-route="selectedRoute"
-          v-model:selected-link="selectedLink"
-          v-model:target="target"
-          v-model:capability="capability"
-          :graph="graph.data.value"
-          :status="status.data.value"
-          :operational-ready="operationalReady"
-          :probing="probeMutation.isPending.value"
-          :resolving="resolveMutation.isPending.value"
-          :probe-result="probeMutation.data.value"
-          :resolve-result="resolveMutation.data.value"
-          :probe-error="probeMutation.error.value"
-          :resolve-error="resolveMutation.error.value"
-          :status-error="status.error.value"
-          @probe="probeMutation.mutate"
-          @resolve="resolveMutation.mutate()"
-          @relayout="calculateLayout"
-        />
-      </div>
+    <AsyncState
+      :loading="graphQuery.isPending.value"
+      :error="graphQuery.error.value"
+      :empty="empty"
+      :empty-text="t('graph.empty')"
+    >
+      <ElSkeleton v-if="layoutPending" class="graph-view__layout-state" :rows="6" animated :aria-label="t('graph.layout')" />
+      <ElAlert
+        v-else-if="layoutError"
+        type="error"
+        :closable="false"
+        :title="t('common.error')"
+        :description="layoutError.message"
+      />
+      <ElContainer v-else-if="layout && graphQuery.data.value" class="graph-view__workspace">
+        <ElMain class="graph-view__canvas-region">
+          <GraphCanvas
+            :key="layout.fingerprint + layoutRevision"
+            :layout="layout"
+            :link-status="linkStatus"
+            :active-steps="activeSteps"
+            :selection="selection"
+            @select="selection = $event"
+          />
+        </ElMain>
+        <ElAside class="graph-view__inspector-region" width="328px">
+          <GraphInspector
+            v-model:selected-route="selectedRoute"
+            v-model:selection="selection"
+            v-model:target="target"
+            v-model:capability="capability"
+            :graph="graphQuery.data.value"
+            :status="statusQuery.data.value"
+            :operational-ready="operationalReady"
+            :probing="probeMutation.isPending.value"
+            :resolving="resolveMutation.isPending.value"
+            :probe-result="probeMutation.data.value"
+            :resolve-result="resolveMutation.data.value"
+            :probe-error="probeMutation.error.value"
+            :resolve-error="resolveMutation.error.value"
+            :status-error="statusQuery.error.value"
+            @probe="probeMutation.mutate"
+            @resolve="resolveMutation.mutate()"
+            @relayout="calculateLayout"
+          />
+        </ElAside>
+      </ElContainer>
     </AsyncState>
   </section>
 </template>
+
+<style scoped>
+.graph-view {
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.graph-view__counts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--locus-space-6);
+  color: var(--text-muted);
+  font-size: var(--locus-font-size-md);
+}
+
+.graph-view__counts strong {
+  color: var(--text-primary);
+  font-size: var(--locus-font-size-base);
+}
+
+.graph-view__layout-state {
+  min-height: 0;
+  flex: 1;
+}
+
+.graph-view__workspace {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--locus-radius-md);
+  background: var(--surface-panel);
+}
+
+.graph-view__canvas-region {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.graph-view__inspector-region {
+  min-width: 0;
+  overflow: hidden;
+}
+
+@media (max-width: 1100px) {
+  .graph-view {
+    height: auto;
+  }
+
+  .graph-view__workspace {
+    min-height: 0;
+    display: block;
+  }
+
+  .graph-view__canvas-region {
+    height: 540px;
+  }
+
+  .graph-view__inspector-region {
+    width: 100% !important;
+    border-top: 1px solid var(--border-subtle);
+  }
+}
+
+@media (max-width: 600px) {
+  .graph-view__counts {
+    justify-content: flex-start;
+  }
+
+  .graph-view__canvas-region {
+    height: 440px;
+  }
+}
+</style>

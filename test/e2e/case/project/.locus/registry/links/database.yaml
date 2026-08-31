@@ -1,0 +1,13 @@
+api_version: locus/v0
+type: link
+id: link.database-admin
+from: customer::gateway.edge
+to: customer::database.primary
+provider: ssh
+requires: [shell]
+provides: [database.postgresql, sql]
+provider_data:
+  user: database-operator
+  host: 127.0.0.1
+  port: 22032
+  credential_ref: secret://ssh/customer-a-database

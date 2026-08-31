@@ -1,0 +1,8 @@
+api_version: locus/v0
+type: entity
+id: gateway.edge
+kind: gateway
+name: 边缘网关
+documentation:
+  - ref: ../docs/platform-topology.md#边缘入口
+    title: 边缘入口

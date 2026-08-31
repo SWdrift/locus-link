@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/vue-query'
-import { computed } from 'vue'
 import { getStatus } from './api'
 import { useOperationalContext } from './operational-context'
 

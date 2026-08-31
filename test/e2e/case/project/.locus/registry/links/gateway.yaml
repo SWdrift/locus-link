@@ -1,0 +1,12 @@
+api_version: locus/v0
+type: link
+id: link.edge-shell
+from: {{WORKSTATION}}
+to: customer::gateway.edge
+provider: ssh
+provides: [shell, exec]
+provider_data:
+  user: operator
+  host: 127.0.0.1
+  port: 22031
+  credential_ref: secret://ssh/customer-a-edge

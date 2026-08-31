@@ -300,10 +300,13 @@ func assertWebEndToEnd(t *testing.T, executable, project string, env []string, d
 	if strings.Contains(string(graphBody), "credential_ref") || strings.Contains(string(graphBody), "secret://") || strings.Contains(string(graphBody), "provider_data") {
 		t.Fatalf("graph leaked provider or secret data: %s", graphBody)
 	}
-	if entities, ok := webGraph["entities"].([]any); !ok || len(entities) != 3 {
+	if entities, ok := webGraph["entities"].([]any); !ok || len(entities) != 9 {
 		t.Fatalf("unexpected Web graph entities: %#v", webGraph)
 	}
-	if routes, ok := webGraph["routes"].([]any); !ok || len(routes) != 2 {
+	if links, ok := webGraph["links"].([]any); !ok || len(links) != 9 {
+		t.Fatalf("unexpected Web graph links: %#v", webGraph)
+	}
+	if routes, ok := webGraph["routes"].([]any); !ok || len(routes) != 7 {
 		t.Fatalf("unexpected Web graph routes: %#v", webGraph)
 	}
 
@@ -423,9 +426,11 @@ func webJSON(t *testing.T, client *http.Client, method, endpoint, body string, w
 func assertKnowledgeIndex(t *testing.T, value any) string {
 	t.Helper()
 	documents, ok := value.([]any)
-	if !ok || len(documents) != 2 {
+	if !ok || len(documents) != 3 {
 		t.Fatalf("unexpected knowledge index: %#v", value)
 	}
+	projectDocumentID := ""
+	topologyFound := false
 	for _, item := range documents {
 		document, ok := item.(map[string]any)
 		if !ok {
@@ -435,20 +440,30 @@ func assertKnowledgeIndex(t *testing.T, value any) string {
 		if filepath.IsAbs(path) || strings.Contains(filepath.ToSlash(path), "../") {
 			t.Fatalf("document path escaped Scope docs: %#v", document)
 		}
+		associations, ok := document["associations"].([]any)
+		if !ok {
+			t.Fatalf("document associations missing: %#v", document)
+		}
 		if document["title"] == "生产访问" {
-			associations, ok := document["associations"].([]any)
-			if !ok || len(associations) != 2 {
+			if len(associations) != 2 {
 				t.Fatalf("project document was not deduplicated: %#v", document)
 			}
-			id, ok := document["id"].(string)
-			if !ok || id == "" {
-				t.Fatalf("document ID missing: %#v", document)
+			projectDocumentID, _ = document["id"].(string)
+		}
+		if filepath.ToSlash(path) == "platform-topology.md" {
+			if len(associations) != 6 {
+				t.Fatalf("platform topology associations missing: %#v", document)
 			}
-			return id
+			topologyFound = true
 		}
 	}
-	t.Fatalf("生产访问文档缺失: %#v", value)
-	return ""
+	if projectDocumentID == "" {
+		t.Fatalf("生产访问文档缺失: %#v", value)
+	}
+	if !topologyFound {
+		t.Fatalf("平台拓扑文档缺失: %#v", value)
+	}
+	return projectDocumentID
 }
 
 func assertWebRouteStatus(t *testing.T, status map[string]any, routeID, want string) {

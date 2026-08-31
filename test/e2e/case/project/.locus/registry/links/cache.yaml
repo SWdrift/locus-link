@@ -1,0 +1,12 @@
+api_version: locus/v0
+type: link
+id: link.cache-admin
+from: {{WORKSTATION}}
+to: customer::cache.primary
+provider: ssh
+provides: [cache.admin]
+provider_data:
+  user: cache-operator
+  host: 127.0.0.1
+  port: 22035
+  credential_ref: secret://ssh/customer-a-cache

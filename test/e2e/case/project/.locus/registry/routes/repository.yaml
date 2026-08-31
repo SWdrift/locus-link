@@ -1,0 +1,5 @@
+api_version: locus/v0
+type: route
+id: route.repository
+steps:
+  - link: link.repository-access

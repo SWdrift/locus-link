@@ -1,0 +1,11 @@
+api_version: locus/v0
+type: entity
+id: database.primary
+kind: database
+name: 主数据库
+labels:
+  engine: postgresql
+  tier: production
+documentation:
+  - ref: ../docs/platform-topology.md#数据服务
+    title: 数据服务

@@ -1,6 +1,5 @@
 import en from 'element-plus/es/locale/lang/en'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import { computed, ref, watch } from 'vue'
 import { i18n } from './i18n'
 import type { AppLocale } from './i18n'
 
