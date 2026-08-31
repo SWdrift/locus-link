@@ -1,14 +1,14 @@
-# Locus Link Control Plane
+# locus-link Control Plane
 
 ## Control Plane Role
 
-本控制平面管理 Locus Link 从窄 v0 到可执行 operational path 的连续演进。当前行动面是 declaration、Resolve、safe Probe / Observation、provider-native context、documentation references 与本机 WebUI；长期允许在同一 Entity / Link / Route 模型上增加 Plan、Instance、Execute、Supervise 和 Teardown。
+本控制平面管理 locus-link 作为 concrete environment / situated operational knowledge layer 的演进。当前行动面是 declaration、Resolve、safe Probe / Observation、provider binding、documentation、CLI/WebUI，以及未来薄层 locus-link MCP Agent interface。
 
-迭代必须由真实 Project/Environment 和可运行 Vertical Slice 驱动。Registry 是当前存储/组织形态，不是产品本体；后续层不得复制 Locus Core、隐藏 provider-native semantics，或为尚未验证的能力预建空框架。
+locus-link 控制面覆盖 concrete environment knowledge 与 native/MCP mechanism binding。
 
 ## Meta Reference
 
-- 入口：非小规模 Locus Link 设计、CLI、Schema、Provider、Observation、documentation、WebUI 读取契约或 E2E 改动。
+- 入口：非小规模 locus-link 设计、CLI、Schema、Provider、Observation、documentation、WebUI 读取契约或 E2E 改动。
 - 读取顺序：`cp-meta.md` → `cpm-locus-link.md` → 本文件 → `documents/design/README.md` → 相关代码与设计。
 - 执行同时遵循根目录 `AGENTS.md`；代码和可运行测试是实现现状事实源，`documents/design/` 是确定设计入口。
 - 创建或扩展 CP 使用 `create-control-plane`；阶段收尾或动态区膨胀使用 `compact-control-plane`。
@@ -17,13 +17,14 @@
 
 - 产品入口：`cmd/locus/main.go`、`internal/locus/`。
 - 公共契约：`documents/design/contracts/`，维护用户、Agent 和 Registry 作者依赖的 CLI、HTTP API、JSON 与 YAML。
-- 内部设计：`documents/design/系统设计.md`、`documents/design/数据流与存储设计.md`；当前 CLI 用户摘要：根目录 `README.md`。
+- 基础设计：`documents/design/base-核心概念.md`、`documents/design/base-系统设计.md`、`documents/design/base-Home与Registry设计.md`、`documents/design/base-数据设计.md`；当前 CLI 用户摘要：根目录 `README.md`。
 - 实现快照：`documents/current-architecture.md`，记录当前代码与 E2E 已证明的事实及契约偏差。
 - 背景资料：`documents/reference/Necessary Project Context.md`，提供问题来源和外部约束，不作为公共契约或当前实现事实源。
+- MCP 分层背景参考：[`documents/reference/locus-link 与 MCP.md`](documents/reference/locus-link%20与%20MCP.md)；确定设计仍以 `documents/design/` 为准。
 - E2E 声明：`test/e2e/case/`；测试驱动：`test/e2e_test.go`；复现入口：`test/reproduce.ps1`。
 - 运行产物：`temp/e2e-run/`，必须保留供人工复现。
-- 当前 v0 不实现 Planner、自动 path discovery、通用 Executor、Route Instance lifecycle、Graph DB、远程 Registry、复杂 Store 或治理。
-- 当前 WebUI 是 loopback 本机读写界面：读取 Graph、Status、Knowledge，复用 Core 执行 Resolve 与显式 safe Probe；不引入远程服务。
+- 当前 v0 不实现 locus-link Home Catalog、managed/remote Source、Profile、MCP Adapter/MCP provider binding 或远程 Store。
+- 当前 WebUI 是 loopback 本机界面：读取 Graph、Status、Knowledge，复用 Core 执行 Resolve 与显式 safe Probe；不引入远程服务。
 
 ## Core Rules
 
@@ -37,24 +38,22 @@
 
 ### 产品与模型
 
-- 人类核心模型是 Entity（东西）、Link（一步已知方式）、Route（已知 operational path）；Scope、Binding、Context、Observation 和 documentation refs 是支撑机制。
-- v0 范围是 Declaration、Resolve、safe Probe / Observation、provider-native context 与 documentation references。
-- Route 显式声明且不要求 `previous.to == next.from`；v0 无 automatic ranking、path discovery 或复杂 capability type system。
-- `requires/provides` 保持轻量 capability flow：当前用于显式 Route 校验，未来可供 compilation / planning 消费。
-- Declaration 保存已知访问方式；Instance 保存本次具体访问；Observation 保存实际测量。v0 不因未来层增加 runtime 抽象。
-- Entity 保存目标稳定事实；Link / Provider config 保存机制用法；Binding 保存 Project role 映射；Runtime Context / Instance 保存调用时值。
-- Secret value 始终由外部机制管理；Locus 只保存 reference，任何输出、错误和 Observation 都不得泄漏值。
-- Provider safe probe passed 不等于完整 capability 已被证明可执行。
-- Documentation reference 属于声明关系；内容不能覆盖结构化声明，也不参与 capability、Route 或 execution 语义。
-- Registry 是实现/存储形态，不是最终产品边界。
+- 人类核心模型是 Entity、Binding、Link、Route；Scope 是 ownership/namespace/composition boundary，Context、Observation 和 documentation 是支撑机制。
+- Registry 是一个 Scope 的声明集合；Registry Source 是物理来源；canonical identity 不随 Source 位置变化。
+- Declared View 只由 active Scope 与显式 transitive import DAG 构成；Profile/Situated Context 不注入普通声明。
+- 一个 Home 内一个 Scope 同时最多一个 active authoritative Source；Source 迁移是 authority switch，不是 precedence merge。
+- Route 显式声明且不要求 `previous.to == next.from`；Entity relation 与 `provides/requires` capability relation 并存。
+- Secret value 始终由外部 native/MCP credential mechanism 管理；locus-link 只保存 reference。
+- Provider Registry 保存 Link 与 native/MCP mechanism 的 concrete binding。
+- Observation applicability 目标包含 declaration digest、vantage、provider binding、Probe kind/version 与 relevant context fingerprint；Profile 不能整体作为 validity key。
+- Documentation reference 属于声明关系；内容不能覆盖结构化声明，适合由 MCP Resource 渐进暴露。
 
 ### 演进约束
 
-- 当前 Locus v0 不拥有通用执行器；长期允许 Route 被编译、实例化并执行，但必须调用 provider-native mechanism，禁止万能 `host.exec()`。
-- CLI、Agent 与 WebUI 共享同一 Locus Core / truth source；WebUI 不复制 declaration、observation 或 documentation 模型。
-- WebUI 固定为 read-oriented Graph、Status、Knowledge 加显式 safe Probe；不扩展为远程控制面或独立状态源。
-- PostgreSQL 和真实 Gitea + FRP + worker CI/CD 是 first-class special cases，不再放入 Awaiting Real Need。
-- 新字段、Provider 或抽象必须由上述真实案例证明；优先最小 schema/output 增量，不创建空接口、目录或兼容层。
+- Plan、Instance、Execute、Supervise、Teardown 设计冻结；只有数据库与 Gitea E2E 证明 Agent + native/MCP providers 仍不可靠时才重新打开最小语义。
+- CLI、WebUI 与未来 locus-link MCP Adapter 是同一 Core 的并列 clients；Core 不依赖 MCP。
+- PostgreSQL 和真实 Gitea + FRP + worker CI/CD 是边界验证案例；真正 action 由 native 工具或已有 MCP Server 完成。
+- 新字段、Provider 或抽象必须由上述真实案例证明；不创建 placeholder schema、空接口或兼容层。
 
 ### 变更同步
 
@@ -64,9 +63,15 @@
 
 ## Task Board
 
+### Next Minimal Implementation
+
+- [ ] 为 Observation 增加 declaration digest、Probe semantics version 与 relevant context fingerprint，迁移旧记录为 diagnostics-only。
+- [ ] 先定义 locus-link MCP 最小公共契约，再以薄 Adapter 映射 `resolve/probe/status` 与 context/entity/link/route/doc Resources；Core 不引入 MCP SDK 类型。
+- [ ] 以 database fixture 验证 native 与 MCP provider binding 的最小声明差异。
+
 ### Deferred Domain Cases
 
-- [ ] PostgreSQL：冻结 database Entity stable facts，补 Provider、Resolve documentation discovery 和完整 E2E。
-- [ ] Gitea + FRP + Worker CI/CD：验证显式 deploy Route 的最小 step input/output 语义。
+- [ ] locus-link Home/Catalog、managed/remote Source、authority switch 与 immutable revision provenance。
+- [ ] Gitea + FRP + Worker + Production：验证陌生 Agent 能获得结构化 Route/capability/provider/evidence/docs，而不是原样 YAML/README。
 
-代码证据和公共契约偏差统一维护在 [`documents/current-architecture.md`](documents/current-architecture.md)；Task Board 只保留可执行修改项。
+代码事实和目标设计偏差统一维护在 [`documents/current-architecture.md`](documents/current-architecture.md)；Task Board 只保留可执行修改项。

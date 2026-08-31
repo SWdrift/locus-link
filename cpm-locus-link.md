@@ -1,48 +1,50 @@
-# Locus Link Memory
+# locus-link Memory
 
 本文件保存 `cp-locus-link.md` scope 内已验证、后续迭代可复用的结论。当前代码或高优先级规则与本文冲突时，以代码和高优先级规则为准。
 
 ## Product Decisions
 
-- 当前 Locus Link v0 不拥有通用执行器；长期允许 declared operational paths 被编译、实例化并执行，但必须建立在 Provider-native mechanism 与显式语义之上，禁止抽象成万能 `host.exec()`。
-- Registry 是当前实现/存储/组织形态，不是 Locus 的最终产品边界。
+- Plan、Instance、Execute、Supervise、Teardown 当前冻结；只有数据库与 Gitea E2E 证明 Agent + native/MCP providers 仍不可靠，并给出缺失的最小语义时才重新打开窄设计。
+- 命名规则：项目/产品统一为 `locus-link`；`locus` 只表示 executable、schema/API/resource namespace；`Locus` 只指上级项目。
+- Registry 是当前实现/存储/组织形态，不是 locus-link 的最终产品边界。
 - 面向人的核心模型是 Entity（operational resource）、Link（一步已知方式）、Route（已知 operational path）；Scope、Binding、Context、Observation 和 documentation refs 是支撑机制。
 - Project 与 Environment 是 declaration ownership/lifecycle Scope，不是 Graph Node。
-- Binding 只表达 Project role → canonical Entity，不是 Link，也不提供 capability。
-- Declaration 保存已知访问方式；Instance 保存本次具体访问；Observation 保存实际测量。三者不得互相覆盖。
-- 参数所有权：Entity 保存目标稳定事实；Link / Provider config 保存机制用法；Binding 保存角色映射；Runtime Context / Instance 保存调用时值。
-- Locus 只保存 Secret reference；Secret value 由 SSH Agent、Credential Manager、Vault、环境变量等外部机制负责。
+- Declaration 保存已知访问方式；Situated Context 保存本次现场；Observation 保存特定 Probe 语义下的实际测量。三者不得互相覆盖。
+- 参数所有权：Entity 保存目标稳定事实；Link/provider binding 保存机制用法；Binding 保存角色映射；Situated Context 保存调用时值。
+- locus-link 只保存 Secret reference；Secret value 由 SSH Agent、Credential Manager、Vault、环境变量等外部机制负责。
 - Provider 外部进程的 stdout/stderr 属于不受信输入，不进入错误、Observation 或日志；当前诊断只保留操作名和稳定失败类别，未来只能增加 Provider 明确解析并列入白名单的非敏感字段。
-- v0 不建立 Capability 对象；`requires/provides` 是开放字符串与轻量 fold，当前校验显式 Route，未来为 capability flow、compilation 和 planning 保留语义空间。
+- v0 不建立 Capability 对象；`requires/provides` 是开放字符串与轻量 fold，用于校验显式 Route。
 - Route 的 target 由最后一个 Link 的 `to` 推导，provides 由 ordered steps 累计推导；不重复声明 target/provides/priority/generic constraints。
 - Route 不要求严格节点连续。FRP→SSH 等链路表达前一步为后一步建立条件，不创建 localhost endpoint、session 或 tunnel Entity。
-- v0 只解析显式 Route，不做自动 ranking、path discovery 或选择；显式 Route → future compilation / instantiation 是连续演进，不是未来重写。
-- Observation 只记录 canonical Link subject + vantage；Route 状态实时聚合，不落库。Provider safe probe passed 不等于完整 capability 已被证明。
+- Observation provenance/适用性目标包含 canonical Link、declaration digest、vantage、provider binding、Probe kind/version 与 relevant context fingerprint；Profile 只可作为 provenance，不能整体作为 validity key。Route 状态实时聚合，不落库。
 - Documentation reference 属于 declaration graph，供 Agent progressive context disclosure；文档内容不覆盖结构化声明，也不参与 capability、Route 或 execution 语义。
 - Documentation reference 必须是相对路径，词法归一化和符号链接解析后都受限于所属 Scope Registry 的 `docs/`。
-- CLI、Agent 与本机 WebUI 共享同一个 Locus Core / truth source；WebUI 固定围绕 Graph、Status、Knowledge、Resolve 与显式 safe Probe，不成为独立状态源或远程控制面。
+- CLI、WebUI 与薄层 locus-link MCP Adapter 是同一 Core 的并列 clients；Core 不依赖 MCP。
 - Observation Store v0 是本机 SQLite，不建设 shared/global/remote Store abstraction。
 - CLI 当前外层 contract 是 `resolve / probe`；其余一级命令按 inspection 与 registry authoring 分层。
-- Locus 当前目标采用 local-first Workspace：用户 Locus Home 管理 Catalog、Profile、远程缓存和本地 Workspace SQLite；项目可以使用 managed Registry 或 embedded `.locus/registry`。
-- Scope 是声明所有权、命名空间和组合的一等边界；Project、Environment、shared infrastructure 是角色，不形成不同领域模型。
-- Effective View 只包含 active Scope、显式 import 闭包和当前 Profile attachments，不合并 Catalog 中全部 Scope。
-- Git 与远程文件系统只是只读 Registry Source；所有 Probe 在本机执行并写入本机 Observation Store，不建设远程 Probe、Observation 上报或透明双写。
+- locus-link Home 管理 Catalog、Profile、远程缓存和 locus-link State DB；不建立持久化 Workspace domain object。
+- Scope 是 ownership、namespace 和 composition boundary；Registry 是一个 Scope 的声明集合；Registry Source 是物理来源，canonical identity 与 Source location 分离。
+- Declared View 只含 active Scope 与显式 transitive import DAG；Situated Context 含 Profile、actor、vantage、provider availability 和相关 runtime facts，Profile 不注入普通声明。
+- 一个 Home 内一个 Scope 同时最多一个 active authoritative Source；Source 迁移是 authority switch，不是 precedence merge。remote activation 必须记录 requested/resolved revision 与 content digest。
+- MCP 负责 transport；locus-link Registry 保存 Link 所需 MCP binding/reference。
+- Provider Registry 是 mechanism adapter/binding 层，允许 native 与 MCP 两类 concrete binding。
 
 ## Documentation Architecture
 
 - 用户、Agent、Registry 作者和自动化直接依赖的 CLI、HTTP API、JSON 与 YAML 统一放在 `documents/design/contracts/`，视为需要兼容或显式升级的公共契约。
 - Provider Go interface、Resolver、Observation Store 和 SQLite schema 当前是内部契约或实现细节，不因被记录而成为外部兼容承诺。
-- `documents/design/Workspace与Registry设计.md` 维护 Locus Home、Scope、Registry Source、项目关联、组合和本地 Store 归属；`documents/design/系统设计.md` 从 Canonical Declared View 开始维护 Resolve / Probe → Provider → Observation 的 Core 处理链。
-- `documents/design/数据流与存储设计.md` 维护来源、变换、ownership、持久化、freshness 和 Secret 血缘，不复制公共 schema 或 SQLite 具体表结构。
+- `documents/design/base-核心概念.md` 维护 Entity、Link/Graph、Binding、Project Route overlay、Resolve、Probe、Observation 等名词与产品生命周期。
+- `documents/design/base-Home与Registry设计.md` 维护 locus-link Home、Scope、Registry Source、项目关联、组合和本地 Store 归属；`documents/design/base-系统设计.md` 从 Canonical Declared View 开始维护 Resolve / Probe → Provider → Observation 的 Core 处理链。
+- `documents/design/base-数据设计.md` 维护来源、变换、ownership、持久化、freshness 和 Secret 血缘，不复制公共 schema 或 SQLite 具体表结构。
 - `documents/current-architecture.md` 记录当前代码映射、支持范围和公共契约偏差，不承担目标契约。
 
 ## Forward Compatibility Cases
 
-- PostgreSQL：`production-db` Binding + database Entity stable facts + PostgreSQL Link/provider config + Secret reference + Observation + documentation refs，应解析为 `psql` 等 provider-native context；v0 不执行 SQL。
-- Gitea CI/CD：`source`、`ci-worker`、`production` Bindings 与 Gitea→FRP/bastion→worker→existing deploy mechanism 显式 Route，应让 Agent 发现既有 deployment path；Locus 不重建 Runner、FRP 或 CI/CD。
-- Gitea 已有真实路径，不再属于 Awaiting Real Need；是否新增 Provider 取决于某一步是否存在独立 Validate/Render/Probe 契约，而不是对象名称。
-- 当前 `Link.from == current_entity` applicability 可能阻塞 worker/deploy 或 tunnel 实例化语义；必须由两个案例验证后，才决定是否增加最小 step condition/output 表达。
-- 下一步优先稳定 Entity facts、Resolve documentation discovery、provider-native hint 与结构化 read contract；不创建 Planner、Executor、Runtime、InstanceManager 或 GraphEngine 脚手架。
+- PostgreSQL：`production-db` Binding + database Entity facts + explicit Route + credential/docs + Observation，应能选择 native `psql` 或 existing PostgreSQL MCP binding；locus-link Core 不执行 SQL。
+- Gitea：`source/ci-worker/production` Bindings 与 Gitea→FRP/bastion→worker→deploy mechanism Route，应让陌生 Agent 获得结构化 capability/provider/evidence/provenance。
+- 是否新增 Provider binding 取决于某个 Link 是否存在独立 Validate/Describe/SafeProbe contract，而不是对象名称；MCP binding 只保存 reference。
+- 当前 `Link.from == current_entity` applicability 可能阻塞 worker/deploy 或 tunnel 语义；先由两个案例证明失败，再决定是否增加最小 runtime condition/output。
+- 下一步优先修复 Observation provenance/semantics validity，再建立薄 locus-link MCP contract/Adapter。
 
 ## Verified Implementation Baseline
 
@@ -57,6 +59,7 @@
 - Registry 装载会校验对象版本、identity 字符集、Environment 限制、documentation containment、Provider 注册及完整 Provider data；声明错误不进入 Probe 持久化。
 - Provider Probe 在 dial 或进程启动前重复执行 Validate；FRP、SSH、Salt Observation 分别记录具体测量 kind，外部进程失败不保存原始输出。
 - Observation 的零 `expires_at` 表示没有显式期限；只有非零且已过期的记录才派生为 stale。
+- 当前 Observation 只持久化 subject + vantage 等 v0 字段，缺少 declaration digest、Probe semantics version 与 context fingerprint；这是已确认的目标不变量缺口。
 - `validate`、`list`、`show` 是 declaration-only 路径，不解析 PATH、runtime 或 Observation state。
 - `LOCUS_STATE_PATH` 可将测试 Store 定向到工作区；生产默认使用 OS 本机 state 目录。
 - 当前需要 Runtime Context 的命令要求显式 `--from`；未传 `--vantage` 时退化为 host-specific vantage。该易用性需由真实使用再评估。

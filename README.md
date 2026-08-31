@@ -1,6 +1,6 @@
-# Locus Link
+# locus-link
 
-Locus Link 根据当前 operational context、目标和 capability 解析人工声明的 Route，返回 canonical target、ordered Links、Provider 原生上下文和最近的 Observation。它不执行 Route，不启动 FRP、不建立 SSH session，也不执行 Salt operation；Probe 只执行 Provider 定义的安全检查。
+locus-link 根据当前 operational context、目标和 capability 解析人工声明的 Route，返回 canonical target、ordered Links、Provider 原生上下文和最近的 Observation。它不执行 Route，不启动 FRP、不建立 SSH session，也不执行 Salt operation；Probe 只执行 Provider 定义的安全检查。
 
 当前实现同时提供 CLI 与本机 Web UI；不包含自动路径发现、Planner、Executor、Graph DB、远程 Registry 或 Secret Store。
 
@@ -105,7 +105,7 @@ Provider 安全边界：
 
 Probe failure 仍在 stdout 返回稳定 JSON，并使用退出码 `4`；诊断写 stderr。
 
-## Inspecting Locus
+## Inspecting locus-link
 
 这些命令用于理解、排错和调试，不是普通 resolve/probe 循环的前置步骤。
 
@@ -139,7 +139,7 @@ object: <canonical Entity declaration>
 locus web --from workstation.dev-a --vantage office-lan
 ```
 
-`web` 启动只监听本机回环地址的嵌入式 Vue 界面，使用与 CLI 相同的 Registry、Locus Core 和本机 Observation Store，不通过子进程调用 CLI。
+`web` 启动只监听本机回环地址的嵌入式 Vue 界面，使用与 CLI 相同的 Registry、locus-link Core 和本机 Observation Store，不通过子进程调用 CLI。
 
 - **Graph**：查看 Entity、Link 与 Route，解析 target/capability，并显式 Probe 所选 Link 或 Route；
 - **Status**：查看指定 vantage 的最新 Link evidence 与动态 Route evidence；
@@ -149,7 +149,7 @@ locus web --from workstation.dev-a --vantage office-lan
 
 ## Registry Discovery
 
-正常使用不需要 `--registry`。Locus 从当前工作目录向上寻找：
+正常使用不需要 `--registry`。`locus` 从当前工作目录向上寻找：
 
 ```text
 .locus/registry/scope.yaml
@@ -172,7 +172,7 @@ locus probe route.prod-shell
 locus status route.prod-shell
 ```
 
-PowerShell 与 POSIX shell 的差异只影响可执行文件调用和 shell quoting，不进入 Locus 领域模型。Provider-native context 可以按平台返回 `ssh`、`pwsh`、`bash`、`frpc` 或 `salt` 等不同工具。
+PowerShell 与 POSIX shell 的差异只影响可执行文件调用和 shell quoting，不进入 locus-link 领域模型。Provider-native context 可以按平台返回 `ssh`、`pwsh`、`bash`、`frpc` 或 `salt` 等不同工具。
 
 ## Command Flags
 

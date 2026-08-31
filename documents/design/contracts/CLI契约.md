@@ -1,12 +1,12 @@
-# Locus Link CLI 契约
+# locus-link CLI 契约
 
 ## 简述
 
-CLI 是 Locus Link 当前面向人和 Agent 的命令入口。用户以目标和 capability 发起 Resolve，需要时执行 Safe Probe，再用更新后的 Observation 重新理解路径。
+CLI 是 locus-link 当前面向人和 Agent 的命令入口。用户以目标和 capability 发起 Resolve，需要时执行 Safe Probe，再用更新后的 Observation 重新理解路径。
 
 - 声明 YAML、identity 与 Provider data 见[声明契约](声明契约.md)
-- 产品语义见[产品设计](../产品设计.md)
-- 内部处理流程见[系统设计](../系统设计.md)
+- 产品语义与名词见[基础核心概念](../base-核心概念.md)
+- 内部处理流程见[基础系统设计](../base-系统设计.md)
 - 当前实现覆盖见[当前实现快照](../../current-architecture.md)
 
 ## 职责
@@ -138,7 +138,7 @@ object: <canonical Entity declaration>
 
 ## Registry discovery 与 Runtime Context
 
-Locus 默认从 cwd 向父目录查找：
+`locus` 默认从 cwd 向父目录查找：
 
 ```text
 .locus/registry/scope.yaml
