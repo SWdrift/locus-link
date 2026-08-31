@@ -42,7 +42,7 @@ function Wait-TcpEndpoint {
     }
 }
 $repo = Split-Path -Parent $PSScriptRoot
-$runRoot = Join-Path $repo 'temp/e2e-run'
+$runRoot = Join-Path $repo 'temp/e2e-run/native'
 $locus = Join-Path $runRoot 'bin/locus.exe'
 $project = Join-Path $runRoot 'projects/alpha'
 $binding = Join-Path $runRoot 'mechanisms/workstation-a.yaml'
@@ -51,9 +51,14 @@ $device = Join-Path $runRoot 'devices/dev-a'
 $probeLog = Join-Path $runRoot 'probe-invocations.log'
 
 $required = @($locus, (Join-Path $project '.locus/registry/scope.yaml'), $binding, $state)
-if ($Refresh -or ($required | Where-Object { -not (Test-Path -LiteralPath $_) })) {
+$missing = @($required | Where-Object { -not (Test-Path -LiteralPath $_) })
+if ($Refresh -or $missing.Count -gt 0) {
     & (Join-Path $repo 'scripts/test-e2e.ps1')
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+$missing = @($required | Where-Object { -not (Test-Path -LiteralPath $_) })
+if ($missing.Count -gt 0) {
+    throw "E2E artifacts are missing after refresh: $($missing -join ', ')"
 }
 
 $hostName, $portText = $Address -split ':', 2
