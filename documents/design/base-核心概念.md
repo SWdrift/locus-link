@@ -8,12 +8,12 @@ locus-link 描述异构环境中“如何获得某种 operational capability”�
 - 用户和 Agent 依赖的接口见[公共契约](contracts/README.md)
 - 整体组件关系见[基础系统设计](base-系统设计.md)
 - 测试基准与关键样例见[测试设计](测试设计.md)
-- MCP 分层背景见 [`documents/reference/locus-link 与 MCP.md`](../reference/locus-link%20与%20MCP.md)
+- Scope graph 与用户级入口分别见[基础 Scope 设计](base-Scope设计.md)和[用户级 Locus 设计](base-用户级Locus设计.md)
 
 ## 职责
 
 - 解释 locus-link 为什么存在；
-- 定义 Entity、Link/Graph、Project Route overlay、Resolve 与 Probe 的产品语义；
+- 定义 Entity、Link/Graph、根 Scope Route overlay、Resolve 与 Probe 的产品语义；
 - 明确核心信息的生命周期和长期责任边界。
 
 ## 从实际工作形成可复用知识
@@ -22,7 +22,7 @@ locus-link 的模型来自人和 Agent 在实际工作中形成、保存和复�
 
 1. 团队先辨认需要访问或操作的对象，把它们定义为 **Entity**；
 2. 当一种访问或使用方式被确认可用，就把它沉淀为 **Link**；多个 Link 共同形成环境的声明操作图 **Graph**；
-3. Project 用 **Binding** 给目标赋予业务名称，再用 **Route** 选择并排序完成目标所需的 Link，形成 **Route overlay**；
+3. 当前根 Scope 用 **Binding** 给目标赋予业务名称，再用 **Route** 选择并排序完成目标所需的 Link，形成 **Route overlay**；
 4. 用户或 Agent 通过 **Resolve** 随时取得目标、已知路径、具体 mechanism、当前证据和相关文档；
 5. 证据缺失或过期时，显式 **Probe** 测量 Link，并把 Link Observation 追加到 Observation Store，供下一次 Resolve 使用。
 
@@ -31,7 +31,7 @@ flowchart LR
     WORK["实际工作"] --> ENTITY["定义工作对象 Entity"]
     ENTITY --> LINK["沉淀已知方式 Link"]
     LINK --> GRAPH["形成声明操作图 Graph"]
-    GRAPH --> ROUTE["Project 选择并排序 Link\nRoute overlay"]
+    GRAPH --> ROUTE["根 Scope 选择并排序 Link\nRoute overlay"]
 
     ROUTE --> RESOLVE["随时查询 Resolve"]
     CONTEXT["当前现场\nSituated Context"] --> RESOLVE
@@ -40,7 +40,7 @@ flowchart LR
 
     ROUTE --> PROBE["显式 Probe"]
     CONTEXT --> PROBE
-    PROBE --> SAFE["Native / MCP SafeProbe"]
+    PROBE --> SAFE["Native Provider SafeProbe"]
     SAFE --> RECORD["追加 Link Observation"]
     RECORD --> STORE[("观测存储 Observation Store")]
     STORE --> EVIDENCE
@@ -58,18 +58,17 @@ flowchart LR
 | **Link** | 一条已经知道的 operational relationship，说明从什么对象通过什么方式获得什么能力；同时包含 `from/to` 对象关系、`requires/provides` 能力关系和 mechanism usage。 |
 | **Capability** | 可命名的操作条件或能力；Link 通过 `requires/provides` 传递 capability，Resolve 按目标 capability 查找已知 Route。 |
 | **Graph** | 当前声明中全部 Entity 与 Link 的确定性投影；复杂环境中用于观察整体关系，不是单独维护的 truth source。 |
-| **Binding** | Project 中有业务意义的角色名到 canonical Entity 的映射，例如 `production-db → environment.customer-a::db.prod`。 |
+| **Binding** | 当前根 Scope 中有业务意义的角色名到 canonical Entity 的映射，例如 `production-db → environment.customer-a::db.prod`。 |
 | **Route** | 为某个目标能力选择并排序的一组已有 Link。 |
-| **Route overlay** | Route 在 Graph 上的表现：只覆盖当前 Project 和目标所需的 Link，不复制 Link，也不形成另一份拓扑。 |
+| **Route overlay** | Route 在 Graph 上的表现：只覆盖当前根 Scope 和目标所需的 Link，不复制 Link，也不形成另一份拓扑。 |
 | **Declaration** | 团队明确登记并可审阅的 Entity、Binding、Link、Route、mechanism/credential/documentation references。 |
-| **Scope / Registry** | Scope 确定 Declaration 属于哪个项目或环境；Registry 保存和组织一个 Scope 的 Declaration。 |
+| **Scope / Registry** | Scope 是具有稳定 identity 的声明节点；Registry 保存该 Scope 的 Declaration。Project、User 与 Environment/remote 是收集图中的相对角色。 |
 
 ### 当前现场与现实证据
 
 | 名词 | 产品含义 |
 |---|---|
-| **Situated Context** | 本次调用成立的现场事实，包括 actor、current entity、vantage、本机 mechanism availability 和相关 runtime facts。 |
-| **Profile** | 当前用户或设备保存的现场默认值，例如默认 actor 与 vantage；调用时可以被显式事实覆盖。 |
+| **Situated Context** | 本次调用成立的现场事实，包括 current entity、vantage、本机 mechanism availability 和 Provider 明确需要的 runtime facts。 |
 | **Vantage** | 一次测量所在的观察位置或网络位置，用于区分不同现场下的 Observation。 |
 | **Resolve** | 只读查询：把目标、Route overlay、Situated Context 和适用 Observation 组合成可消费知识。 |
 | **Probe** | 用户或 Agent 显式发起的测量；可以指定一条 Link，或按 Route 顺序测量其中的 Link。 |
@@ -83,17 +82,17 @@ flowchart LR
 
 | 名词 | 产品含义 |
 |---|---|
-| **Mechanism binding / Provider binding** | Link 与具体 native executable 或已有 MCP server/tool 之间的关联。 |
+| **Mechanism binding / Provider binding** | Link 与具体 native executable 之间的关联。 |
 | **Provider adapter** | locus-link 内解释 mechanism binding 的适配边界，负责 Validate、Describe 和 SafeProbe。 |
-| **Credential Reference** | Link 保存的凭据定位信息，指向 Credential Source；它不是密码或令牌值。 |
-| **Credential Source** | Credential Reference 指向的实际凭据来源，例如环境变量、Credential Manager、Vault、SSH Agent 或 MCP auth。 |
+| **Credential Reference** | Link 保存的 opaque 凭据定位信息；它不是密码或令牌值。 |
+| **Credential mechanism** | Git、HTTP、SSH Agent、Credential Manager、Vault 或环境变量等外部机制；locus-link 不建立通用 Credential Source 模型。 |
 | **Documentation Reference** | Declaration 关联的操作、迁移或排障文档引用，供人和 Agent 按需读取。 |
 
 ## 数据库访问示例
 
 ### 从用户问题开始
 
-用户在 Project 中提出：
+用户在项目根 Scope 中提出：
 
 ```text
 如何从当前工作站对 production-db 执行 SQL？
@@ -128,7 +127,7 @@ sequenceDiagram
 
 在实际查询之前，要在 Registry 中登记以下事实：
 
-- Project 里的名字 `production-db` 指向生产环境中的具体数据库 Entity；
+- 项目根 Scope 里的名字 `production-db` 指向生产环境中的具体数据库 Entity；
 - 这个 Entity 保存数据库地址、端口、引擎和 database name；
 - 一条显式 Route 说明：先通过 SSH 获得本地数据库端点，再使用该端点执行 PostgreSQL 操作。
 
@@ -143,7 +142,7 @@ sequenceDiagram
   提供：sql.execute
 ```
 
-本例中，SSH Link 绑定本机 `ssh`；PostgreSQL Link 可以绑定本机 `psql`，也可以引用已有 PostgreSQL MCP server/tool。两条 Link 使用 Credential Reference，在运行时从配置的 Credential Source 取得凭据。
+本例中，SSH Link 绑定本机 `ssh`，PostgreSQL Link 绑定本机 `psql`。两条 Link 只保存 opaque Credential Reference，实际 Secret 由 native 工具使用其既有 credential mechanism 取得。关联文档可以描述已有 MCP tool 的使用方法，但 locus-link 不解析或实例化该 MCP 功能。
 
 这些 Declaration 归属于相应 Scope 并由 Registry 组织；`requires/provides` 表达第一步建立的本地端点是第二步执行 SQL 的前置条件。
 
@@ -175,11 +174,11 @@ Resolve 返回一份结构化说明：
 
 - `production-db` 对应的、带完整作用域且不会与其他环境重名的 Entity；
 - “SSH 隧道 → PostgreSQL”的有序步骤；
-- 每一步使用的 native executable 或 MCP server/tool reference；
+- 每一步使用的 native invocation reference；
 - 当前现场下每一步的成功、失败、过期或未知证据；
 - 与数据库操作、迁移和排障有关的文档引用。
 
-调用方据此知道目标是谁、先做什么、后做什么，以及当前证据能证明到哪一步。真正执行时，Agent 再调用 native `ssh`、`psql` 或已有 PostgreSQL MCP tool；locus-link 提供已知路径和调用依据。
+调用方据此知道目标是谁、先做什么、后做什么，以及当前证据能证明到哪一步。真正执行时，Agent 调用 native `ssh`、`psql`，或自行遵循关联文档中描述的其他操作；locus-link 只提供已知路径和调用依据。
 
 #### 4. 临时故障不会改写团队登记的访问方式
 
@@ -198,6 +197,8 @@ Resolve 返回 Documentation Reference 后，Agent 可以按需读取数据库�
 
 Graph 是 locus-link 长期的第一性结构：它表达已经登记的 operational possibilities，并允许 Core 在不改写声明的前提下，按当前现场和一次具体选择逐层专化。Possibility、Mechanism、Instance 是同一 operational knowledge lineage 的三种解释模式，不要求在实现中建立三个 Graph 类型，也不维护三份持久 truth source。
 
+> **演化说明：** 本节仅用于保留长期演化方向，不属于当前版本的实现范围，也不构成任何 schema、Store、Planner、Executor 或生命周期承诺。当前能力必须以公共契约和当前实现快照为准，不得根据本节推断已实现功能。
+
 ```text
 Possibility Graph
       ↓ resolve / refinement
@@ -212,7 +213,7 @@ Instance view
 Possibility Graph = Graph(Declared View)
 ```
 
-Possibility Graph 由声明中的 Entity 节点和 Link 关系确定。Scope、Binding 与 Source provenance 提供解释上下文；Route 是对已有 Link 的显式线性 composition overlay。workstation、Profile、vantage 和 Observation 不增加、删除或覆盖这一层的节点与关系，因此同一 Declared View 在不同现场得到相同的 Possibility Graph。
+Possibility Graph 由声明中的 Entity 节点和 Link 关系确定。Scope、Binding 与 Source provenance 提供解释上下文；Route 是对已有 Link 的显式线性 composition overlay。current entity、vantage、本机 mechanism availability 和 Observation 不增加、删除或覆盖这一层的节点与关系，因此同一 complete Declared View 在不同现场得到相同的 Possibility Graph。
 
 ### Mechanism
 
@@ -224,7 +225,7 @@ Mechanism view
 + applicable Observation overlay
 ```
 
-Mechanism view 表达当前 actor、current entity、vantage 和 provider environment 下，哪些已声明 Link 具有可解释的具体 mechanism，以及适用证据能证明到什么程度。它是按需派生的 refinement：Provider availability 或 Observation 变化只改变本次解释，不反向修改 Possibility Graph，也不形成第二份持久图。
+Mechanism view 表达 current entity、vantage 和 provider environment 下，哪些已声明 Link 具有可解释的具体 mechanism，以及适用证据能证明到什么程度。它是按需派生的 refinement：Provider availability 或 Observation 变化只改变本次解释，不反向修改 Possibility Graph，也不形成第二份持久图。
 
 当前 v0 的 Resolve 只实现这一模式的有限投影：它消费显式 Route，不执行自动寻路或一般 Graph planning。
 
@@ -238,7 +239,7 @@ Instance view 是未来对已选 mechanism 的一次具体 specialization，可�
 
 ## 演进边界
 
-Plan、Instance、Execute、Supervise 和 Teardown 当前冻结。只有数据库或 Gitea E2E 证明 Agent 使用既有 native/MCP capability 仍缺少必要的现场语义时，才重新评估对应设计。
+Plan、Instance、Execute、Supervise 和 Teardown 当前冻结。只有真实 E2E 证明 Agent 使用既有 native capability 仍缺少必要的现场语义时，才重新评估对应设计。
 
 > 新增抽象必须由真实路径证明，并保持显式、可解释和 provider-native。
 

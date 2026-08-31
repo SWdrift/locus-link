@@ -10,7 +10,7 @@ locus-link 保存具体项目与环境中已经沉淀的 operational knowledge�
 - **Probe** 对指定 Link 做有限测量，追加新的现实证据。
 
 - 产品问题、使用示例和名词定义见[基础核心概念](base-核心概念.md)
-- Scope、Registry Source、Declared View 与 Situated Context 的形成见[基础 Home 与 Registry 设计](base-Home与Registry设计.md)
+- Scope、Registry Source 与 Declared View 的形成见[基础 Scope 设计](base-Scope设计.md)，用户根入口与本机状态见[用户级 Locus 设计](base-用户级Locus设计.md)
 - 数据来源、持久化与 Secret 血缘见[基础数据设计](base-数据设计.md)
 - YAML、CLI 和 Web 的可观察行为见[公共契约](contracts/README.md)
 - 当前 Go、SQLite、Provider、CLI/Web 和 E2E 实现见[当前实现快照](../current-architecture.md)
@@ -22,13 +22,13 @@ locus-link 保存具体项目与环境中已经沉淀的 operational knowledge�
 - 定义 Entity、Binding、Link 和 Route 进入 Core 后的组合与处理不变量；
 - 定义 Declared View、Situated Context 和 Observation overlay 如何形成一次可查询视图；
 - 定义 Resolve、Probe、Link Observation 与 Route evidence 的核心语义；
-- 定义 native/MCP mechanism binding 与 Core projections 的边界。
+- 定义 native mechanism binding 与 Core projections 的边界。
 
 本文不固定 Registry Source discovery、公共 wire schema、SQLite schema、Go interface、当前 Provider 清单或当前命令装配。
 
 ## 产品模型
 
-Entity、Link/Graph、Project Route overlay，以及用户通过 Resolve 获取知识、通过 Probe 追加现实证据的完整形成过程，由[基础核心概念的“从实际工作形成可复用知识”](base-核心概念.md#从实际工作形成可复用知识)统一定义。
+Entity、Link/Graph、根 Scope Route overlay，以及用户通过 Resolve 获取知识、通过 Probe 追加现实证据的完整形成过程，由[基础核心概念的“从实际工作形成可复用知识”](base-核心概念.md#从实际工作形成可复用知识)统一定义。
 
 本文从产品模型已经形成的 Declared View、Situated Context 和 Link Observations 开始，说明 Core 如何组合、处理并投影这些信息。
 
@@ -43,7 +43,7 @@ flowchart TB
     end
 
     subgraph RUNTIME["2. 运行时视图"]
-        PROFILE["Profile 默认值"] --> CONTEXT["现场上下文 Situated Context"]
+        CONTEXT["现场上下文 Situated Context"]
         INVOCATION["本次调用事实"] --> CONTEXT
         STORE[("观测存储 Observation Store")] --> OVERLAY["证据覆盖 Observation overlay"]
     end
@@ -54,10 +54,10 @@ flowchart TB
     end
 
     subgraph MECHANISM["4. 机制边界"]
-        BINDING["机制绑定 Mechanism binding\nnative / MCP"]
+        BINDING["机制绑定 Mechanism binding\nnative"]
         DESCRIBE["Describe\n生成调用引用"]
         SAFEPROBE["SafeProbe\n执行固定测量"]
-        EXTERNAL["原生工具或既有 MCP tool"]
+        EXTERNAL["原生工具"]
 
         BINDING --> DESCRIBE
         BINDING --> SAFEPROBE
@@ -66,7 +66,7 @@ flowchart TB
 
     subgraph PROJECTIONS["5. 对外投影"]
         RESULT["Resolve · Graph · Status\nDocumentation · Probe result"]
-        CLIENTS["CLI · WebUI · locus-link MCP Adapter"]
+        CLIENTS["CLI · WebUI"]
         RESULT --> CLIENTS
     end
 
@@ -95,14 +95,14 @@ flowchart TB
 1. **知识模型**：工作中定义和沉淀了什么；
 2. **运行时视图**：当前调用看到了哪些声明、现场与证据；
 3. **Core 处理闭环**：怎样 Resolve，怎样 Probe 并记录；
-4. **机制边界**：Link 如何关联 native 或 MCP mechanism；
+4. **机制边界**：Link 如何关联 native mechanism；
 5. **对外投影**：人和 Agent 怎样消费同一套知识。
 
 ## 详细设计
 
 ### 1. 知识模型
 
-Entity、Link/Graph、Binding 和 Project Route overlay 的产品含义见[基础核心概念名词表](base-核心概念.md#名词表)。Core 只消费它们组成的 Declared View，并维持以下组合不变量：
+Entity、Link/Graph、Binding 和根 Scope Route overlay 的产品含义见[基础核心概念名词表](base-核心概念.md#名词表)。Core 只消费它们组成的 Declared View，并维持以下组合不变量：
 
 - Entity 在 Graph 投影中表现为节点，Link 表现为有向关系；
 - Scope 与 Binding 只提供归属和名称解释，不伪装成 operational Entity；
@@ -116,25 +116,26 @@ Entity、Link/Graph、Binding 和 Project Route overlay 的产品含义见[基�
 
 #### Declared View
 
-Core 消费已经完成 identity 规范化、显式 import 组合、引用解析和静态校验的 **Declared View**。声明的存在与静态有效性只由 authoritative Registry Sources 决定，不由当前机器、Provider availability 或 Probe 结果决定。
+Core 消费已经完成 identity 规范化、显式 import graph 收集、引用解析和节点静态校验的 **Declared View**。每个已加载节点的声明存在性与静态有效性只由其 Registry Source 决定，不由当前机器、Provider availability 或 Probe 结果决定。
+
+Declared View 同时携带 `complete/partial` 和 blocked-import diagnostics。Partial 表示已加载节点仍可使用，但 import closure 不完整；Core 不得把 partial view 中的候选集合表述为全图完整结论。
 
 #### Situated Context
 
 **Situated Context** 描述一次调用现场：
 
 ```text
-actor
 current entity / from
 vantage
 local mechanism availability
 Provider 明确需要的相关 runtime facts
 ```
 
-Profile 可以提供默认值，但调用时事实仍独立形成 Situated Context。Context 只影响本次适用性和证据选择，不增加或覆盖 Entity、Link、Route。
+Invocation facts 直接形成 Situated Context。Context 只影响本次适用性和证据选择，不增加或覆盖 Entity、Link、Route；Profile 与独立 actor 语义当前冻结。
 
 #### Observation overlay
 
-Observation Store 保存 Link Observation，不保存一张独立的运行时图。Core 根据当前声明、现场、mechanism binding 和 Probe semantics 选择适用记录，再将证据覆盖到对应 Link。
+Observation Store 保存 Link Observation，不保存一张独立的运行时图。Core 根据当前已加载声明、现场、mechanism binding 和 Probe semantics 选择适用记录，再将证据覆盖到对应 Link。Blocked imports 不产生虚构的 declaration 或 evidence。
 
 ```text
 Resolved View
@@ -174,14 +175,16 @@ Resolve 回答：
 3. 使用 Situated Context 检查 Route 的适用性；
 4. 为每条 Link 解析 concrete mechanism invocation reference；
 5. 为每条 Link 选择当前适用的 Observation；
-6. 动态聚合 Route evidence，并附加声明、现场和文档 provenance；
-7. 返回 resolved、unresolved 或 ambiguous 的结构化结果。
+6. 动态聚合 Route evidence，并附加声明、现场、文档和 Declared View completeness provenance；
+7. 返回 resolved、unresolved 或 ambiguous 的结构化结果及 blocked-import diagnostics。
 
 Resolve 只解释已知 Route 和已有证据。它不会触发 Probe，调用前后 Declaration 与 Observation 数量保持不变。
 
+Complete view 中，resolved/unresolved/ambiguous 表示完整候选集合的基数。Partial view 可以返回已发现 Route，但必须同时返回 `completeness: partial`，不得将“当前只发现一个”表述为全图唯一，也不得把缺失 Scope 表述为确定不存在。
+
 #### Probe
 
-Probe 是对一条 Link 的有限测量，用于回答一个明确问题，例如 endpoint 是否可连接、客户端配置能否展开，或某个固定 MCP SafeProbe 是否成功。
+Probe 是对一条已完整加载并校验的 Link 的有限测量，用于回答一个明确问题，例如 endpoint 是否可连接或客户端配置能否展开。
 
 Probe success 只证明其 `Probe kind + semantics version` 定义的检查通过，不证明登录、SQL 权限、部署或完整 Route 已经执行。
 
@@ -218,7 +221,7 @@ flowchart LR
 - 何时测量、结果是什么、何时过期；
 - 哪些 sanitized evidence 可以公开。
 
-Profile ID 可以作为 provenance，但不能代替真正影响测量语义的 context fingerprint。
+Context fingerprint 只包含 Provider 明确声明会影响测量语义的调用事实；Profile 与 actor 当前不参与 provenance 或 applicability。
 
 Observation 以 append 方式保存。新记录不覆盖历史记录；读取时先筛选适用集合，再选择 latest 并计算 freshness。
 
@@ -235,7 +238,7 @@ Route evidence 每次从 ordered Links 的当前 evidence 动态形成：
 
 ### 4. 机制边界
 
-Link 通过 **mechanism binding** 关联具体实现。Core 对 native 与 MCP mechanism 使用相同的窄语义：
+Link 通过 **mechanism binding** 关联 native 实现。Core 使用以下窄语义：
 
 ```text
 Validate
@@ -243,25 +246,24 @@ Validate
 
 Describe
   返回 native invocation reference
-  或 MCP server/tool reference
 
 SafeProbe
   执行固定、可识别、可版本化的测量
   返回 measured result
 ```
 
-Credential Reference 指向环境变量、Credential Manager、Vault、SSH Agent 或 MCP auth 等 Credential Source；运行时由具体机制取得凭据。Secret value 不成为 Declaration、Observation 或公共结果的一部分。
+Credential Reference 是交给 Git、HTTP、SSH Agent、Credential Manager、Vault 或环境变量等外部 credential mechanism 的 opaque reference。运行时由 native 工具取得凭据；Secret value 不成为 Declaration、Observation 或公共结果的一部分。
 
 Provider adapter 只解释自己的 binding、生成 invocation reference 和执行 SafeProbe。Route selection、Observation applicability、Store append 与 Route evidence 由 Core 统一处理。
 
 ### 5. 对外投影
 
-CLI、WebUI 和 locus-link MCP Adapter 复用同一 Core semantic model。它们可以展示不同投影，但不重新解释领域对象：
+CLI 与 WebUI 复用同一 Core semantic model。它们可以展示不同投影，但不重新解释领域对象：
 
 | Projection | 主要内容 |
 |---|---|
-| Resolve | target、Route overlay、ordered Links、mechanism references、evidence、documentation |
-| Graph | Entity 节点、Link 关系、Route overlay、Scope/Binding 注解 |
+| Resolve | target、Route overlay、ordered Links、native mechanism references、evidence、documentation、completeness |
+| Graph | Entity 节点、Link 关系、Route overlay、Scope/Binding 注解、blocked imports |
 | Status | 当前 vantage 的 Link evidence 与动态 Route evidence |
 | Documentation | Declaration 关联的文档及其 provenance |
 | Probe | 显式测量结果和新增的 Link Observation |
@@ -276,5 +278,5 @@ CLI、WebUI 和 locus-link MCP Adapter 复用同一 Core semantic model。它们
 - Resolve 只读，Probe 是追加 Observation 的入口；
 - Observation 必须与 declaration、vantage、mechanism binding、Probe semantics 和相关 Context 对齐；
 - Probe failure 不删除 Link，Probe success 不修改 Route；
-- Graph、Status、Documentation、CLI、WebUI 和 MCP 都复用同一 Core semantic model；
+- Graph、Status、Documentation、CLI 和 WebUI 复用同一 Core semantic model，partial view 始终保留 completeness diagnostics；
 - Secret value 与未经清洗的外部输出不进入持久化知识或公共结果。

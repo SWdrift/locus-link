@@ -1,6 +1,6 @@
 # locus-link 当前实现快照
 
-本文只记录当前 Go 实现与可执行 E2E 已经证明的事实，作为易变实现清单。公共目标由 [`design/contracts/`](design/contracts/README.md) 定义，核心概念由[基础核心概念](design/base-核心概念.md)定义，Home/Scope/Registry 目标由 [Home 与 Registry 设计](design/base-Home与Registry设计.md)定义，Core 内部目标由[基础系统设计](design/base-系统设计.md)和[基础数据设计](design/base-数据设计.md)定义。除“明确未实现”一节外，本文不描述计划中的架构。
+本文只记录当前 Go 实现与可执行 E2E 已经证明的事实，作为易变实现清单。公共目标由 [`design/contracts/`](design/contracts/README.md) 定义，核心概念由[基础核心概念](design/base-核心概念.md)定义，Scope/Registry/Source 目标由[基础 Scope 设计](design/base-Scope设计.md)定义，用户根入口与本机状态目标由[用户级 Locus 设计](design/base-用户级Locus设计.md)定义，Core 内部目标由[基础系统设计](design/base-系统设计.md)和[基础数据设计](design/base-数据设计.md)定义。除“明确未实现”一节外，本文不描述计划中的架构。
 
 ## 1. 总体结构与数据流
 
@@ -196,18 +196,18 @@ E2E 已覆盖 `init`、严格命令参数、Registry 向上发现、validate、c
 
 | 目标不变量 | 当前实现 | 风险 |
 |---|---|---|
-| Declared View 支持显式 transitive import DAG | loader 当前只装载 active Project 的一层 Environment imports | 多层显式依赖不能按目标语义组合 |
-| 每个声明保留 authoritative Source 与 immutable revision/content digest | 当前 local Source 只计算文件 content digest，没有 Source registration 或 immutable revision | 无法诊断 mutable remote revision 前后差异 |
-| Profile/Home 为 Situated Context 提供可审阅默认值 | 当前显式 `--from/--vantage/--mechanism-bindings` 已与 Registry 分离，但没有 Profile/Home 默认选择 | 多命令调用需要重复提供同一现场输入 |
+| Declared View 支持递归显式 import graph、按 `scope_id` 去重和回边阻断 | loader 当前只装载 active Project 的一层 Environment imports | 多层显式依赖、alias path、partial diagnostics 和回环处理不可用 |
+| 支持 directory、Git、URL Registry Source 及 immutable provenance | 当前只有 embedded/相对目录，Source digest 只覆盖单个声明文件 | 无法缓存、刷新或诊断 remote 内容变化 |
+| 用户级 Locus 提供用户根 Scope、项目反向登记和 remote cache | 当前只有 cwd 向上发现和 Observation SQLite | 项目外没有用户根入口，项目与用户无法双向发现 |
 
-当前只有 embedded discovery，不存在 managed candidate，因此尚未发生 embedded/managed 静默 precedence；实现 Catalog discovery 时必须采用候选收集与显式冲突规则。
+当前只有 embedded discovery，不存在用户登记表或 remote cache；项目与用户 Scope 的显式双向记录尚未实现。
 
 ## 9. 明确未实现
 
 以下能力在当前 Go model、CLI wiring、Provider registry 和 E2E case 中均无实现：
 
-- locus-link Home Catalog、managed/remote Source、authority switch、Profile 与 immutable revision provenance；
-- locus-link MCP Adapter/Server 与 MCP provider binding；Core 当前不依赖 MCP，符合边界；
+- 用户根 Scope、项目反向登记、递归 import graph、alias/去重/回边阻断与 partial diagnostics；
+- directory/Git/URL Source、remote cache、显式 refresh、resolved commit/content digest 与原子激活；
 - PostgreSQL Provider/binding 与声明/E2E；Gitea CI/CD 的声明、Route 与 E2E；
 - 未被声明引用的 `docs/` 自动扫描、全文索引或 documentation discovery；
 - 自动 Route discovery、路径搜索、候选 ranking；
