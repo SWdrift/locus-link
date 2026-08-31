@@ -39,22 +39,23 @@ h1, h2, h3, p { margin: 0; }
   min-height: 100vh;
   color: var(--text-primary);
   background: var(--surface-page);
+  font-size: 14px;
   transition: color .2s ease, background-color .2s ease;
 }
 .theme-light {
-  --surface-page: #f4f6f8;
-  --surface-sidebar: rgba(250, 251, 252, .94);
+  --surface-page: #f6f7f9;
+  --surface-sidebar: rgba(251, 252, 253, .96);
   --surface-panel: #ffffff;
-  --surface-subtle: #f0f3f6;
+  --surface-subtle: #f2f4f7;
   --surface-raised: #ffffff;
-  --border-subtle: #dce2e8;
-  --border-strong: #c6d0db;
-  --text-primary: #17202b;
-  --text-secondary: #5e6b7a;
-  --text-muted: #7d8997;
+  --border-subtle: #dfe4ea;
+  --border-strong: #c8d1dc;
+  --text-primary: #17212d;
+  --text-secondary: #536170;
+  --text-muted: #707d8c;
   --accent: #2f6fb2;
-  --accent-soft: #e4eef9;
-  --shadow: 0 12px 36px rgba(27, 42, 61, .08);
+  --accent-soft: #e6eff9;
+  --shadow: 0 8px 24px rgba(27, 42, 61, .06);
 }
 .theme-dark {
   --surface-page: #0c1016;
@@ -72,8 +73,8 @@ h1, h2, h3, p { margin: 0; }
   --shadow: 0 16px 48px rgba(0, 0, 0, .24);
 }
 
-.app-shell { min-height: 100vh; display: grid; grid-template-columns: 216px minmax(0, 1fr); }
-.sidebar { position: sticky; top: 0; z-index: 10; height: 100vh; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5) var(--space-4); border-right: 1px solid var(--border-subtle); background: var(--surface-sidebar); backdrop-filter: blur(16px); }
+.app-shell { min-height: 100vh; display: grid; grid-template-columns: 204px minmax(0, 1fr); }
+.sidebar { position: sticky; top: 0; z-index: 10; height: 100vh; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4); border-right: 1px solid var(--border-subtle); background: var(--surface-sidebar); backdrop-filter: blur(16px); }
 .brand { display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-2) var(--space-3); }
 .brand-mark { width: 34px; height: 34px; display: grid; flex: 0 0 auto; place-items: center; border: 1px solid var(--border-strong); border-radius: var(--radius-md); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
 .brand div { min-width: 0; display: grid; gap: 2px; }
@@ -87,30 +88,33 @@ nav a.router-link-active { color: var(--text-primary); background: var(--accent-
 .workspace-card span { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; }
 .workspace-card strong { overflow: hidden; text-overflow: ellipsis; font-size: 12px; white-space: nowrap; }
 
-main { min-width: 0; padding: var(--space-5) clamp(20px, 3vw, 40px) 40px; }
-.topbar { min-width: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-5); margin-bottom: var(--space-6); }
-.workspace-heading { min-width: 160px; padding-top: var(--space-1); }
+main { min-width: 0; padding: var(--space-4) clamp(18px, 2.4vw, 32px) var(--space-5); }
+.topbar { min-width: 0; min-height: 40px; display: flex; justify-content: space-between; align-items: flex-end; gap: var(--space-4); margin-bottom: var(--space-4); }
+.workspace-heading { min-width: 140px; display: grid; gap: 2px; }
+.workspace-heading strong { overflow: hidden; text-overflow: ellipsis; font-size: 14px; white-space: nowrap; }
 h1 { margin-top: var(--space-1); font-size: 18px; font-weight: 600; }
-h2 { margin-top: var(--space-1); font-size: clamp(26px, 3vw, 38px); line-height: 1.1; letter-spacing: -.025em; }
-h3 { margin-top: var(--space-1); font-size: 17px; }
+h2 { font-size: clamp(26px, 2.4vw, 32px); line-height: 1.08; letter-spacing: -.025em; }
+h3 { font-size: 16px; }
 .eyebrow { color: var(--accent); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .14em; }
 .header-actions { min-width: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-end; gap: var(--space-2); }
 .context-controls, .preference-controls { min-width: 0; display: flex; align-items: flex-end; gap: var(--space-2); }
 .context-controls label, .preference-controls label, .resolve-box label { min-width: 0; display: grid; gap: var(--space-1); color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
-.context-input { width: clamp(140px, 14vw, 190px); }
+.context-input { width: clamp(150px, 14vw, 190px); }
 .preference-controls label:first-child { width: 112px; }
 .preference-controls label:last-child { width: 104px; }
 .connection { align-self: flex-end; }
-
-.section-intro { position: relative; display: grid; gap: var(--space-2); margin-bottom: var(--space-5); }
-.section-intro p { max-width: 720px; color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
-.refresh-indicator { position: absolute; top: 0; right: 0; color: var(--text-muted); font-size: 11px; }
+.page-header { min-width: 0; display: grid; grid-template-columns: minmax(180px, auto) minmax(240px, 1fr) auto; align-items: end; gap: var(--space-4); margin-bottom: var(--space-4); }
+.page-title { display: grid; gap: var(--space-1); }
+.page-header p { max-width: 720px; padding-bottom: 2px; color: var(--text-secondary); line-height: 1.5; }
+.page-actions { align-self: end; }
 .async-state { min-height: 160px; display: flex; align-items: center; justify-content: center; gap: var(--space-2); color: var(--text-secondary); font-size: 13px; }
 .technical-id { overflow-wrap: anywhere; font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
 
 @media (max-width: 1100px) {
   .topbar { flex-direction: column; }
   .header-actions { width: 100%; justify-content: flex-start; }
+  .page-header { grid-template-columns: minmax(180px, auto) minmax(0, 1fr); }
+  .page-actions { grid-column: 1 / -1; }
 }
 
 @media (max-width: 800px) {
@@ -121,6 +125,9 @@ h3 { margin-top: var(--space-1); font-size: 17px; }
   nav a { padding: 0 var(--space-3); }
   .workspace-card { display: none; }
   main { padding: var(--space-4); }
+  .page-header { grid-template-columns: 1fr auto; }
+  .page-header p { grid-column: 1 / -1; }
+  .page-actions { grid-column: auto; grid-row: 1; }
 }
 
 @media (max-width: 600px) {
@@ -135,4 +142,6 @@ h3 { margin-top: var(--space-1); font-size: 17px; }
   .context-controls, .preference-controls { display: grid; grid-template-columns: 1fr 1fr; }
   .context-controls label, .context-input, .preference-controls label { width: 100% !important; }
   .connection { width: 100%; justify-content: center; }
+  .page-header { grid-template-columns: 1fr; gap: var(--space-2); }
+  .page-header p, .page-actions { grid-column: 1; grid-row: auto; }
 }

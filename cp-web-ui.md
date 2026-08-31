@@ -35,6 +35,8 @@
 - 采用 Element Plus 作为基础组件库，通过静态 theme-chalk CSS、顶层 `ElConfigProvider`、locale 与 CSS variable overrides 统一组件外观和本地化；业务图、operational status 等产品特有表达继续使用窄的自有组件，不套用通用后台模板。
 - 应用文案使用 Vue I18n；Element Plus locale 只负责组件内建文案，不替代应用消息目录。
 - 组件外观优先使用 Element Plus 的组件、variant、size、state、slot 和 theme token；不得为通用按钮、输入框、选择器、菜单、Card、Alert、Tag、Empty、Skeleton 等重写一套视觉样式。自定义 CSS 只用于应用布局、Graph 等产品特有可视化和组件库无法表达的窄差异。
+- 紧凑不是缩小字号或堆叠边框：优先合并重复 Card、复用统一 `PageHeader`/Operational Toolbar、并行展示高频信息，并用 Tabs 等组件收纳互斥详情；页面不得用大块空白代替清晰层级。
+- 稳定、跨页面重复的标题、工具栏、状态表达必须组件化；只出现一次且没有独立行为或约束的标记保持就地，避免为“组件化”制造无职责包装层。
 
 ### 国际化
 

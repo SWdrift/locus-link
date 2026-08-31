@@ -5,6 +5,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getGraph, probe, resolveRoute } from '../api'
 import AsyncState from '../components/AsyncState.vue'
+import PageHeader from '../components/PageHeader.vue'
 import GraphCanvas from '../features/graph/GraphCanvas.vue'
 import GraphInspector from '../features/graph/GraphInspector.vue'
 import { layoutGraph } from '../features/graph/graph-layout'
@@ -68,14 +69,15 @@ const probeMutation = useMutation({
 
 <template>
   <section class="graph-page">
-    <div class="graph-toolbar">
-      <div><span class="eyebrow">{{ t('graph.eyebrow') }}</span><h2>{{ t('graph.title') }}</h2></div>
-      <div class="summary-pills" aria-live="polite">
-        <ElTag effect="plain" round>{{ graph.data.value?.entities.length ?? 0 }} {{ t('graph.entities') }}</ElTag>
-        <ElTag effect="plain" round>{{ graph.data.value?.links.length ?? 0 }} {{ t('graph.links') }}</ElTag>
-        <ElTag effect="plain" round>{{ graph.data.value?.routes.length ?? 0 }} {{ t('graph.routes') }}</ElTag>
-      </div>
-    </div>
+    <PageHeader :eyebrow="t('graph.eyebrow')" :title="t('graph.title')">
+      <template #actions>
+        <div class="summary-pills" aria-live="polite">
+          <ElTag effect="plain" round>{{ graph.data.value?.entities.length ?? 0 }} {{ t('graph.entities') }}</ElTag>
+          <ElTag effect="plain" round>{{ graph.data.value?.links.length ?? 0 }} {{ t('graph.links') }}</ElTag>
+          <ElTag effect="plain" round>{{ graph.data.value?.routes.length ?? 0 }} {{ t('graph.routes') }}</ElTag>
+        </div>
+      </template>
+    </PageHeader>
 
     <AsyncState :loading="graph.isPending.value" :error="graph.error.value" :empty="empty" :empty-text="t('graph.empty')">
       <ElSkeleton v-if="layoutPending" :rows="6" animated :aria-label="t('graph.layout')" />

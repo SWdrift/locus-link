@@ -1,7 +1,6 @@
-.graph-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); }
 .summary-pills { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
-.graph-workspace { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 292px; min-height: 620px; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-panel); box-shadow: var(--shadow); }
-.flow-panel { min-width: 0; min-height: 620px; background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--accent) 8%, var(--surface-panel)) 0, var(--surface-page) 62%); }
+.graph-workspace { min-width: 0; height: calc(100vh - 173px); min-height: 520px; max-height: 760px; display: grid; grid-template-columns: minmax(0, 1fr) 320px; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-panel); box-shadow: var(--shadow); }
+.flow-panel { min-width: 0; min-height: 0; background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--accent) 7%, var(--surface-panel)) 0, var(--surface-page) 64%); }
 .vue-flow { width: 100%; height: 100%; }
 .vue-flow__node { border: 0; padding: 0; border-radius: var(--radius-md); background: transparent; box-shadow: none; }
 .entity-node { position: relative; width: 200px; height: 84px; display: grid; align-content: center; gap: 3px; padding: var(--space-3) var(--space-4); border: 1px solid var(--border-strong); border-radius: var(--radius-md); text-align: left; color: var(--text-primary); background: var(--surface-raised); box-shadow: var(--shadow); }
@@ -9,21 +8,21 @@
 .entity-node strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .entity-node i { position: absolute; top: -8px; right: var(--space-2); padding: 2px 6px; border-radius: 999px; color: var(--accent); background: var(--accent-soft); font-size: 9px; font-style: normal; }
 .edge-label { position: absolute; z-index: 2; padding: 2px 5px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-secondary); background: var(--surface-panel); font-size: 10px; pointer-events: none; }
-.inspector-panel { min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4); overflow: auto; border-left: 1px solid var(--border-subtle); background: var(--surface-subtle); }
+.inspector-panel { min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); overflow: auto; border-left: 1px solid var(--border-subtle); background: var(--surface-subtle); }
 .inspector-panel section { min-width: 0; display: grid; gap: var(--space-2); }
 .inspector-heading { display: flex; justify-content: space-between; align-items: center; }
-.menu-item-content { width: 100%; min-width: 0; display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
+.menu-item-content { width: 100%; min-width: 0; display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); line-height: 1.25; }
 .menu-item-content > span:first-child { min-width: 0; display: grid; gap: 2px; }
 .menu-item-content small { color: var(--text-muted); font-size: 10px; }
-.selected-detail, .resolve-box { padding-top: var(--space-4); border-top: 1px solid var(--border-subtle); }
+.selected-detail { display: grid; gap: var(--space-2); }
+.selected-detail, .resolve-box { padding-top: var(--space-3); border-top: 1px solid var(--border-subtle); }
 
 @media (max-width: 1100px) {
-  .graph-workspace { grid-template-columns: 1fr; }
+  .graph-workspace { height: auto; max-height: none; grid-template-columns: 1fr; }
   .inspector-panel { max-height: none; border-top: 1px solid var(--border-subtle); border-left: 0; }
 }
 
 @media (max-width: 600px) {
-  .graph-toolbar { align-items: flex-start; flex-direction: column; }
   .summary-pills { justify-content: flex-start; }
   .graph-workspace { min-height: 0; }
   .flow-panel { min-height: 460px; }

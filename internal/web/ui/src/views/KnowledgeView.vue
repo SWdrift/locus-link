@@ -7,6 +7,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getDocument, getKnowledge } from '../api'
 import AsyncState from '../components/AsyncState.vue'
+import PageHeader from '../components/PageHeader.vue'
 import './knowledge.css'
 
 const { t } = useI18n()
@@ -26,27 +27,29 @@ const empty = computed(() => Boolean(knowledge.data.value && !knowledge.data.val
 
 <template>
   <section class="knowledge-page">
-    <div class="section-intro"><span class="eyebrow">{{ t('knowledge.eyebrow') }}</span><h2>{{ t('knowledge.title') }}</h2><p>{{ t('knowledge.description') }}</p></div>
+    <PageHeader :eyebrow="t('knowledge.eyebrow')" :title="t('knowledge.title')" :description="t('knowledge.description')" />
     <AsyncState :loading="knowledge.isPending.value" :error="knowledge.error.value" :empty="empty" :empty-text="t('knowledge.noDocumentationHint')">
-      <div class="knowledge-layout">
-        <aside class="document-list">
-          <ElMenu :default-active="selected" @select="selected = $event">
-            <ElMenuItem v-for="item in knowledge.data.value?.documents" :key="item.id" :index="item.id">
-              <span class="document-summary"><span>{{ item.scope_id }}</span><strong>{{ item.title }}</strong><small>{{ t('knowledge.references', { count: item.associations.length }) }} · {{ item.path }}</small></span>
-            </ElMenuItem>
-          </ElMenu>
-        </aside>
-        <ElCard shadow="never" class="document-reader">
-          <AsyncState :loading="documentQuery.isPending.value" :error="documentQuery.error.value" :empty="!selected">
-            <template v-if="documentQuery.data.value">
-              <header><div><span class="eyebrow">{{ documentQuery.data.value.scope_id }}</span><h3>{{ documentQuery.data.value.title }}</h3></div><small>{{ documentQuery.data.value.path }}</small></header>
-              <div v-if="documentQuery.data.value.format === 'markdown'" class="markdown-body" v-html="rendered"></div>
-              <pre v-else class="plain-document">{{ documentQuery.data.value.body }}</pre>
-              <footer><ElTag v-for="item in documentQuery.data.value.associations" :key="item.object_id + item.ref" type="info" effect="light">{{ item.object_type }} · {{ item.object_id }}</ElTag></footer>
-            </template>
-          </AsyncState>
-        </ElCard>
-      </div>
+      <ElCard shadow="never" class="knowledge-shell">
+        <div class="knowledge-layout">
+          <aside class="document-list">
+            <ElMenu :default-active="selected" @select="selected = $event">
+              <ElMenuItem v-for="item in knowledge.data.value?.documents" :key="item.id" :index="item.id">
+                <span class="document-summary"><span>{{ item.scope_id }}</span><strong>{{ item.title }}</strong><small>{{ t('knowledge.references', { count: item.associations.length }) }} · {{ item.path }}</small></span>
+              </ElMenuItem>
+            </ElMenu>
+          </aside>
+          <article class="document-reader">
+            <AsyncState :loading="documentQuery.isPending.value" :error="documentQuery.error.value" :empty="!selected">
+              <template v-if="documentQuery.data.value">
+                <header><div><span class="eyebrow">{{ documentQuery.data.value.scope_id }}</span><h3>{{ documentQuery.data.value.title }}</h3></div><small>{{ documentQuery.data.value.path }}</small></header>
+                <div v-if="documentQuery.data.value.format === 'markdown'" class="markdown-body" v-html="rendered"></div>
+                <pre v-else class="plain-document">{{ documentQuery.data.value.body }}</pre>
+                <footer><ElTag v-for="item in documentQuery.data.value.associations" :key="item.object_id + item.ref" type="info" effect="light">{{ item.object_type }} · {{ item.object_id }}</ElTag></footer>
+              </template>
+            </AsyncState>
+          </article>
+        </div>
+      </ElCard>
     </AsyncState>
   </section>
 </template>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ElAlert, ElButton, ElInput, ElMenu, ElMenuItem } from 'element-plus'
-import { computed } from 'vue'
+import { ElAlert, ElButton, ElInput, ElMenu, ElMenuItem, ElSpace, ElTabPane, ElTabs } from 'element-plus'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { EvidenceStatus, GraphView, ProbeResult, ResolveResult, StatusView } from '../../api'
 import StatusBadge from '../../components/StatusBadge.vue'
@@ -23,6 +23,7 @@ const selectedLink = defineModel<string>('selectedLink', { required: true })
 const target = defineModel<string>('target', { required: true })
 const capability = defineModel<string>('capability', { required: true })
 const { t } = useI18n()
+const inspectorTab = ref('routes')
 const activeRoute = computed(() => props.graph.routes.find(route => route.canonical_id === selectedRoute.value))
 const selectedLinkView = computed(() => props.graph.links.find(link => link.canonical_id === selectedLink.value))
 const linkStatus = computed(() => new Map(props.status?.links.map(item => [item.link_id, item.status]) ?? []))
@@ -32,28 +33,33 @@ const shortID = (value: string) => value.split('::').at(-1) ?? value
 
 <template>
   <aside class="inspector-panel">
-    <section>
-      <div class="inspector-heading"><span class="eyebrow">{{ t('graph.routeList') }}</span><ElButton text size="small" @click="emit('relayout')">{{ t('graph.relayout') }}</ElButton></div>
-      <ElMenu :default-active="selectedRoute" @select="selectedRoute = $event">
-        <ElMenuItem v-for="route in graph.routes" :key="route.canonical_id" :index="route.canonical_id">
-          <span class="menu-item-content"><span><strong>{{ shortID(route.canonical_id) }}</strong><small>{{ route.steps.length }} {{ t('status.steps') }}</small></span><StatusBadge :status="routeStatus(route.canonical_id)" /></span>
-        </ElMenuItem>
-      </ElMenu>
-      <ElButton v-if="activeRoute" type="primary" size="small" :loading="probing" :disabled="!operationalReady" @click="emit('probe', activeRoute.canonical_id)">{{ t('graph.probeRoute') }}</ElButton>
-    </section>
-
-    <section>
-      <span class="eyebrow">{{ t('status.links') }}</span>
-      <ElMenu :default-active="selectedLink" @select="selectedLink = $event">
-        <ElMenuItem v-for="link in graph.links" :key="link.canonical_id" :index="link.canonical_id">
-          <span class="menu-item-content"><span class="technical-id">{{ shortID(link.canonical_id) }}</span><StatusBadge :status="linkStatus.get(link.canonical_id) ?? 'unknown'" /></span>
-        </ElMenuItem>
-      </ElMenu>
-    </section>
-
-    <section v-if="selectedLinkView" class="selected-detail">
-      <span class="eyebrow">{{ t('graph.selectedLink') }}</span><strong class="technical-id">{{ selectedLinkView.canonical_id }}</strong><small>{{ selectedLinkView.provider }}</small>
-      <ElButton type="primary" size="small" :loading="probing" :disabled="!operationalReady" @click="emit('probe', selectedLinkView.canonical_id)">{{ t('graph.probeLink') }}</ElButton>
+    <section class="inspector-selection">
+      <div class="inspector-heading"><span class="eyebrow">{{ t('graph.routeList') }} / {{ t('status.links') }}</span><ElButton text size="small" @click="emit('relayout')">{{ t('graph.relayout') }}</ElButton></div>
+      <ElTabs v-model="inspectorTab" stretch>
+        <ElTabPane :label="t('graph.routeList')" name="routes">
+          <ElSpace direction="vertical" fill :size="8">
+            <ElMenu :default-active="selectedRoute" @select="selectedRoute = $event">
+              <ElMenuItem v-for="route in graph.routes" :key="route.canonical_id" :index="route.canonical_id">
+                <span class="menu-item-content"><span><strong>{{ shortID(route.canonical_id) }}</strong><small>{{ route.steps.length }} {{ t('status.steps') }}</small></span><StatusBadge :status="routeStatus(route.canonical_id)" /></span>
+              </ElMenuItem>
+            </ElMenu>
+            <ElButton v-if="activeRoute" type="primary" size="small" :loading="probing" :disabled="!operationalReady" @click="emit('probe', activeRoute.canonical_id)">{{ t('graph.probeRoute') }}</ElButton>
+          </ElSpace>
+        </ElTabPane>
+        <ElTabPane :label="t('status.links')" name="links">
+          <ElSpace direction="vertical" fill :size="8">
+            <ElMenu :default-active="selectedLink" @select="selectedLink = $event">
+              <ElMenuItem v-for="link in graph.links" :key="link.canonical_id" :index="link.canonical_id">
+                <span class="menu-item-content"><span class="technical-id">{{ shortID(link.canonical_id) }}</span><StatusBadge :status="linkStatus.get(link.canonical_id) ?? 'unknown'" /></span>
+              </ElMenuItem>
+            </ElMenu>
+            <div v-if="selectedLinkView" class="selected-detail">
+              <strong class="technical-id">{{ selectedLinkView.canonical_id }}</strong><small>{{ selectedLinkView.provider }}</small>
+              <ElButton type="primary" size="small" :loading="probing" :disabled="!operationalReady" @click="emit('probe', selectedLinkView.canonical_id)">{{ t('graph.probeLink') }}</ElButton>
+            </div>
+          </ElSpace>
+        </ElTabPane>
+      </ElTabs>
     </section>
 
     <section class="resolve-box">
