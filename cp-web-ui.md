@@ -37,6 +37,9 @@
 - 组件外观优先使用 Element Plus 的组件、variant、size、state、slot 和 theme token；不得为通用按钮、输入框、选择器、菜单、Card、Alert、Tag、Empty、Skeleton 等重写一套视觉样式。自定义 CSS 只用于应用布局、Graph 等产品特有可视化和组件库无法表达的窄差异。
 - 紧凑不是缩小字号或堆叠边框：优先合并重复 Card、复用统一 `PageHeader`/Operational Toolbar、并行展示高频信息，并用 Tabs 等组件收纳互斥详情；页面不得用大块空白代替清晰层级。
 - 稳定、跨页面重复的标题、工具栏、状态表达必须组件化；只出现一次且没有独立行为或约束的标记保持就地，避免为“组件化”制造无职责包装层。
+- 基础字号、行高、字重、间距、圆角与稳定布局尺寸集中在 `src/design-tokens.css`，由前端入口 `src/main.ts` 一次引入；reset、主题语义色与应用壳样式留在 `App.vue`，领域样式留在负责该视觉边界的 SFC。不得建立第二套 token、独立页面样式表或无行为的样式包装组件。
+- 项目自有 CSS class 使用组件或 feature 前缀的 BEM 风格命名，避免 `panel`、`header`、`field` 等无边界通用名称；只有明确跨组件复用且语义稳定的工具类（当前为 `technical-id`）可以不带组件前缀。Element Plus 与 Vue Flow 的第三方 class 不在此规则内。
+- Element Plus 必须通过 `unplugin-vue-components` 与 `unplugin-auto-import` 按需引入；Vue Composition API 同样由 auto-import 提供。只保留 Element Plus dark variables、Vue Flow 基础样式等第三方官方静态 CSS 入口。
 
 ### 国际化
 
@@ -54,11 +57,12 @@
 
 ### Graph 布局
 
-- Graph 自动布局从 Dagre 迁移到 ELK layered algorithm；使用显式节点尺寸、方向、分层间距、节点间距、端口约束和正交 edge routing，优先减少交叉、回折和标签遮挡。
+- Graph 节点布局使用 ELK layered algorithm，并提供显式节点尺寸、方向、分层间距与节点间距；可视 Link 使用 Vue Flow 基于当前 source/target handle 计算的实时正交路径，确保节点拖动时路径和标签持续跟随，优先减少交叉、回折和标签遮挡。
 - 布局输入只含稳定声明与必要视觉尺寸；状态、选中态和动画不得改变节点坐标。相同 Graph 投影必须得到确定性位置，刷新 evidence 不触发无意义重排。
 - ELK 布局异步执行；实现时优先 Web Worker，并对 Graph 路由和布局引擎延迟加载，避免阻塞初次导航或扩大所有页面的初始成本。
 - 断开子图按稳定键分组排列；平行 Link 必须可区分；Route 作为现有 Link overlay 高亮，不创建重复节点或第二套拓扑。
 - 首次加载在布局完成后 fit view；后续状态刷新保留用户 viewport。只有拓扑变化或用户显式触发“重新布局”时重算并调整视口。
+- Entity 节点允许用户在当前 Graph 画布内拖动以进行临时整理；Vue Flow 在拖动时必须同步重算连接路径与标签位置。拖动只改变当前实例的位置，重新布局、路由重建或刷新后恢复 ELK 确定性布局，不写入 Registry、Observation 或浏览器持久状态。
 
 ### 产品与交互
 
@@ -66,6 +70,7 @@
 - Graph、Status、Knowledge 保持同一 active Scope、current Entity 与 vantage 语境；改变语境后，所有相关查询、选择态和反馈必须一致更新。
 - Probe 必须由用户显式触发，并清楚展示目标、进行中、成功或失败；页面加载、导航、刷新、Resolve 和读取视图不得隐式 Probe。
 - 每项演进先冻结用户任务、入口视图、关键操作、成功反馈、错误态、空态和窄屏行为；不得以无边界视觉重做替代具体目标。
+- 桌面侧边栏在 `184px` 展开态与 `56px` 图标态之间切换，折叠入口固定在侧边栏底部，并使用 Element Plus Menu 的公开 collapse API 保持图标居中；折叠状态只属于当前页面实例。移动端保持横向主导航并隐藏无意义的折叠入口。
 - 信息优先级服务于 operational context：先呈现对象身份、关系、能力与 evidence，再呈现装饰性信息；Scope 与 Binding 不伪装成 operational graph node。
 
 ### 实现边界
@@ -74,6 +79,9 @@
 - API 类型与请求集中在 `src/api.ts`；组件不得各自创建第二套 fetch、错误解析或同义 DTO。
 - 服务端响应是权威数据；客户端派生值保持可重算，不建立与服务端事实竞争的持久状态。
 - Markdown 继续禁用内嵌 HTML并经 DOMPurify 净化；不得通过前端变更扩大外连、脚本、frame、Secret 或 Provider data 暴露面。
+- Knowledge 的文本与 Scope 筛选基于已返回的文档索引元数据在客户端完成；Markdown 必须由 `markdown-it` 渲染并继续经 DOMPurify 净化。
+- Status 搜索、evidence 状态筛选和分页是完整 Status 投影上的客户端展示派生。`/api/v0/status` 仍返回当前 Registry 的完整 Link/Route 快照供 Graph 和汇总复用；SQLite Observation 存储不等同于可分页事件流，因此不得仅为表格分页拆分该契约。
+- Observation 与 Route Evidence 面板使用相同固定高度，表格区域吸收不足一页的数据空白，分页区域保持固定高度和位置；筛选或换页不得造成面板级大范围重排。
 - 破坏 `/api/v0` 字段、语义、副作用或安全边界时，先更新上位设计与契约并迁移所有调用方；不得用前端兼容分支掩盖契约漂移。
 - 保持组件职责按用户可见能力划分；出现重复查询、重复状态机或跨视图大段重复标记时，抽取已有稳定概念，不为单次使用创建抽象层。
 - 选择或组合 Element Plus 组件时先用公开 props、slots 与 CSS variables；不得依赖 `.el-*` 内部 DOM 结构覆盖样式。确需覆盖时必须说明组件库能力缺口，并将选择器限制在本 feature 根节点。
@@ -81,12 +89,13 @@
 ### 可用性与验证
 
 - 交互元素使用语义化 HTML，支持键盘操作、可见焦点、可读标签和明确的 loading、empty、error、disabled 状态；颜色不得是唯一状态信号。
-- 响应式实现必须遵循本文件的尺寸与能力保留规则；不得产生页面级横向溢出，Graph、表格等需要局部滚动的区域应保持边界明确。
+- 前端代码完成后运行 `pnpm --dir internal/web/ui run build`；命中 Web 可观察行为、API 集成或端到端流程时，还必须运行仓库规定的本地 E2E CLI 流程并保留 `temp/e2e-run/`。
 - 视觉或交互变更必须运行实际 Web UI 并用浏览器验证目标流程与目标视口；静态阅读、类型检查或构建成功不能替代视觉验证。
-- 前端代码完成后运行 `npm --prefix internal/web/ui run build`；命中 Web 可观察行为、API 集成或端到端流程时，还必须运行仓库规定的本地 E2E CLI 流程并保留 `temp/e2e-run/`。
 - 修改 Markdown 后运行 `pnpm --dir .tools/markdown run check:links`。
 - 可复用的前端决策、验证结论和坑点沉淀到同目录 `cpm-web-ui.md`；一次性进度、临时设计草案和易变代码快照只留在动态任务区。
 
 ## Task Board
 
-当前无已冻结的前端演进任务。后续任务必须从本文件的设计、国际化、响应式和验证规则开始冻结最小边界。
+### 暂缓
+
+- [ ] Home Catalog 与多 Scope 注册、切换和编辑组织：等待 Core、CLI 与 Web 公共契约实现后再接入；当前应用壳只表达服务实际装载的 active Scope。
