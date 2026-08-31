@@ -16,10 +16,14 @@ import (
 )
 
 type contextResponse struct {
-	ActiveScope locus.Scope       `json:"active_scope"`
+	ActiveScope scopeResponse     `json:"active_scope"`
 	Imports     []importResponse  `json:"imports"`
 	Bindings    map[string]string `json:"bindings"`
 	Runtime     runtimeResponse   `json:"runtime"`
+}
+
+type scopeResponse struct {
+	ID string `json:"id"`
 }
 
 type importResponse struct {
@@ -74,11 +78,17 @@ func newHandler(config Config) (http.Handler, error) {
 		imports = append(imports, importResponse{Alias: alias, ScopeID: scopeID})
 	}
 	sort.Slice(imports, func(i, j int) bool { return imports[i].Alias < imports[j].Alias })
+	bindings := map[string]string{}
+	for _, binding := range registry.Bindings {
+		if binding.ScopeID == registry.RootScopeID {
+			bindings[binding.ID] = binding.Target
+		}
+	}
 	api := &apiHandler{
 		registry: registry, providers: locus.NewProviders(), statePath: statePath,
 		defaultFrom: currentEntity, defaultVantage: vantage, mechanismBindingsPath: config.MechanismBindings,
 		context: contextResponse{
-			ActiveScope: registry.Manifest.Scope, Imports: imports, Bindings: registry.Bindings,
+			ActiveScope: scopeResponse{ID: registry.RootScopeID}, Imports: imports, Bindings: bindings,
 			Runtime: runtimeResponse{CurrentEntity: currentEntity, Vantage: vantage},
 		},
 	}
@@ -155,7 +165,7 @@ func (a *apiHandler) getDocument(response http.ResponseWriter, request *http.Req
 
 func (a *apiHandler) getValidation(response http.ResponseWriter, _ *http.Request) {
 	writeJSON(response, http.StatusOK, map[string]any{
-		"valid": true, "active_scope": a.registry.Manifest.Scope.ID,
+		"valid": true, "active_scope": a.registry.RootScopeID,
 		"entities": len(a.registry.Entities), "links": len(a.registry.Links), "routes": len(a.registry.Routes),
 	})
 }

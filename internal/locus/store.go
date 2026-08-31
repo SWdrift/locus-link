@@ -93,6 +93,10 @@ func OpenStore(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := migrateLocusState(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return store, nil
 }
 func migrateObservationApplicability(db *sql.DB) error {

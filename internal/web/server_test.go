@@ -15,6 +15,7 @@ import (
 func TestContextAndEmbeddedUI(t *testing.T) {
 	registry := writeTestRegistry(t)
 	t.Setenv("LOCUS_STATE_PATH", filepath.Join(registry, "state.db"))
+	t.Setenv("LOCUS_HOME", filepath.Join(registry, "home"))
 	server, err := New(Config{Registry: registry, From: "workstation", Vantage: "office-lan"})
 	if err != nil {
 		t.Fatal(err)
@@ -149,11 +150,11 @@ func writeTestRegistry(t *testing.T) string {
 		}
 	}
 	files := map[string]string{
-		"scope.yaml": "api_version: locus/v0\nscope:\n  id: project.web\n  kind: project\n",
-		filepath.Join("entities", "workstation.yaml"): "api_version: locus/v0\ntype: entity\nid: workstation\nkind: workstation\nname: Workstation\n",
-		filepath.Join("entities", "target.yaml"):      "api_version: locus/v0\ntype: entity\nid: target\nkind: host\nname: Target\ndocumentation:\n  - ref: ../docs/runbook.md\n    title: Web runbook\n",
-		filepath.Join("links", "safe.yaml"):           "api_version: locus/v0\ntype: link\nid: link.safe\nfrom: workstation\nto: target\nprovider: salt\nprovides: [salt.ping]\nprovider_data:\n  minion_id: test-target\n",
-		filepath.Join("routes", "safe.yaml"):          "api_version: locus/v0\ntype: route\nid: route.safe\nsteps:\n  - link: link.safe\n",
+		"scope.yaml": "api_version: locus/v1\nscope_id: project.web\n",
+		filepath.Join("entities", "workstation.yaml"): "api_version: locus/v1\ntype: entity\nid: workstation\nkind: workstation\nname: Workstation\n",
+		filepath.Join("entities", "target.yaml"):      "api_version: locus/v1\ntype: entity\nid: target\nkind: host\nname: Target\ndocumentation:\n  - ref: ../docs/runbook.md\n    title: Web runbook\n",
+		filepath.Join("links", "safe.yaml"):           "api_version: locus/v1\ntype: link\nid: link.safe\nfrom: workstation\nto: target\nprovider: salt\nprovides: [salt.ping]\nprovider_data:\n  minion_id: test-target\n",
+		filepath.Join("routes", "safe.yaml"):          "api_version: locus/v1\ntype: route\nid: route.safe\nsteps:\n  - link: link.safe\n",
 		filepath.Join("docs", "runbook.md"):           "# Web runbook\n\nUse the validated workspace context.\n",
 	}
 	for name, contents := range files {
