@@ -4,11 +4,11 @@
 
 ## Product Decisions
 
-- Plan、Instance、Execute、Supervise、Teardown 当前冻结；只有数据库与 Gitea E2E 证明 Agent + native/MCP providers 仍不可靠，并给出缺失的最小语义时才重新打开窄设计。
-- 命名规则：项目/产品统一为 `locus-link`；`locus` 只表示 executable、schema/API/resource namespace；`Locus` 只指上级项目。
-- Registry 是当前实现/存储/组织形态，不是 locus-link 的最终产品边界。
+- Plan、Instance、Execute、Supervise、Teardown 当前冻结；只有真实 E2E 证明现有 Resolve、显式 Probe 和 native provider 仍缺少必要语义时，才重新打开窄设计。
+- 命名规则：项目/产品统一为 `locus-link`；`locus` 只表示 executable、schema/API/resource namespace；“用户级 Locus”专指用户根入口与本机状态边界。
+- Registry 是一个 Scope 的同构声明载体；Scope 是稳定 identity 节点，Registry Source 只负责定位内容。
 - 面向人的核心模型是 Entity（operational resource）、Link（一步已知方式）、Route（已知 operational path）；Scope、Binding、Context、Observation 和 documentation refs 是支撑机制。
-- Project 与 Environment 是 declaration ownership/lifecycle Scope，不是 Graph Node。
+- Project、User 与 Environment/remote 是 Scope 在当前收集图中的相对角色，不形成不同 Graph Node 或固定 Scope 类型。
 - Declaration 保存已知访问方式；Situated Context 保存本次现场；Observation 保存特定 Probe 语义下的实际测量。三者不得互相覆盖。
 - 参数所有权：Entity 保存目标稳定事实；Link/provider binding 保存机制用法；Binding 保存角色映射；Situated Context 保存调用时值。
 - locus-link 只保存 Secret reference；Secret value 由 SSH Agent、Credential Manager、Vault、环境变量等外部机制负责。
@@ -16,35 +16,48 @@
 - v0 不建立 Capability 对象；`requires/provides` 是开放字符串与轻量 fold，用于校验显式 Route。
 - Route 的 target 由最后一个 Link 的 `to` 推导，provides 由 ordered steps 累计推导；不重复声明 target/provides/priority/generic constraints。
 - Route 不要求严格节点连续。FRP→SSH 等链路表达前一步为后一步建立条件，不创建 localhost endpoint、session 或 tunnel Entity。
-- Observation provenance/适用性目标包含 canonical Link、declaration digest、vantage、provider binding、Probe kind/version 与 relevant context fingerprint；Profile 只可作为 provenance，不能整体作为 validity key。Route 状态实时聚合，不落库。
-- Documentation reference 属于 declaration graph，供 Agent progressive context disclosure；文档内容不覆盖结构化声明，也不参与 capability、Route 或 execution 语义。
+- Observation provenance/适用性目标包含 canonical Link、declaration digest、vantage、provider binding、Probe kind/version 与 relevant context fingerprint；Profile 与 actor 当前冻结。Route 状态实时聚合，不落库。
+- Documentation reference 属于 declaration graph，供 Agent progressive context disclosure；文档内容不覆盖结构化声明，也不参与 capability、Route 或 execution 语义。文档可以描述 MCP 操作，但 locus-link 不解析、实例化或执行其中的 MCP 功能。
 - Documentation reference 必须是相对路径，词法归一化和符号链接解析后都受限于所属 Scope Registry 的 `docs/`。
-- CLI、WebUI 与薄层 locus-link MCP Adapter 是同一 Core 的并列 clients；Core 不依赖 MCP。
+- CLI 与 WebUI 是同一 Core 的 clients；MCP Adapter、MCP Provider、MCP Resource 与 MCP SafeProbe 当前冻结。
 - Observation Store v0 是本机 SQLite，不建设 shared/global/remote Store abstraction。
 - CLI 当前外层 contract 是 `resolve / probe`；其余一级命令按 inspection 与 registry authoring 分层。
-- locus-link Home 管理 Catalog、Profile、远程缓存和 locus-link State DB；不建立持久化 Workspace domain object。
-- Scope 是 ownership、namespace 和 composition boundary；Registry 是一个 Scope 的声明集合；Registry Source 是物理来源，canonical identity 与 Source location 分离。
-- Declared View 只含 active Scope 与显式 transitive import DAG；Situated Context 含 Profile、actor、vantage、provider availability 和相关 runtime facts，Profile 不注入普通声明。
-- 一个 Home 内一个 Scope 同时最多一个 active authoritative Source；Source 迁移是 authority switch，不是 precedence merge。remote activation 必须记录 requested/resolved revision 与 content digest。
-- MCP 负责 transport；locus-link Registry 保存 Link 所需 MCP binding/reference。
-- Provider Registry 是 mechanism adapter/binding 层，允许 native 与 MCP 两类 concrete binding。
+- 用户级 Locus 由用户根 Scope 与本机状态组成；本机状态管理项目反向登记、remote cache/refresh metadata 和 Observation Store，不建立持久化 Workspace domain object。
+- Scope 是稳定 identity 节点；Registry 是其声明集合；Registry Source 支持相对/绝对目录、Git 和 URL，canonical identity 与 Source location 分离。
+- Declared View 从明确根 Scope 沿显式 imports 递归收集；按 `scope_id` 去重，阻断回边并显式报告 partial。项目对用户 Scope 的引用也是显式 import。
+- Import alias 解决引用歧义，不改变 canonical identity，也不能掩盖相同 `scope_id` 的内容冲突。
+- 普通命令只读已激活 remote cache；显式 refresh 获取并校验 Git/URL 内容，记录 resolved commit/content digest，成功后原子激活，失败保留最后有效版本。
+- Credential value 由 Git、HTTP、SSH 等外部机制管理；locus-link 只保存 opaque reference。
+
+## Scope v1 Decisions
+
+- 公共声明 clean cutover 到 `api_version: locus/v1`；不兼容解析 `locus/v0`、`scope.kind`、list-style imports 或 `--scope-kind`，不保留 alias、deprecated path 或 shim。
+- 每个 Registry 内生 `scope_id`，对象 canonical identity 为 `scope_id::local_id`；Binding 属于 owning Scope。Project、User 和 remote 仅由根选择与 Source provenance 表达相对角色。
+- Import 只允许 map 形式。Scalar path 与 `${LOCUS_HOME}` 前缀规范化为 directory，`git+https/git+ssh/git+file` 为 Git，`http/https` 为 ZIP URL；完整形式只有 expected `scope_id` 与 Source。
+- `${LOCUS_HOME}/registry` 是唯一允许展开的变量，仅用于项目显式导入当前用户 Registry；其他占位符或环境变量一律拒绝。
+- URL payload 固定为 ZIP Registry。下载与展开均受大小、entry 数、path traversal、drive path、symlink 和 containment 限制；不尝试单文件索引协议。
+- 图计算固定使用 `gonum.org/v1/gonum v0.16.0` 的 `graph/simple`、`graph/path`、`graph/topo`；业务层不手写可达性、最短路径、SCC 或第二套 adjacency。
+- Directory Source 直接读取；Git/URL 普通收集只读 edge active cache，缺失时报告 `missing_active_cache`，绝不 fetch。
+- Git refresh 固定解析 mutable requested revision 到 immutable commit；URL refresh 可以使用 ETag/Last-Modified，但 active identity 仍由 validated content digest 决定。
+- Refresh 在隔离 candidate 中完成严格校验后，才通过单个 SQLite transaction 激活 edge entry 与 Scope authority；失败保留 last-known-good，首次失败只阻断对应 edge。
+- Source 修改后以显式 refresh 直接切换 active authority，不实现独立 authority-switch。相同 `scope_id` 的不同内容无 active authority 时全部排除，不按遍历顺序选赢家。
+- PostgreSQL、Gitea、Profile、actor、MCP Adapter/Provider/Resource/runtime 和执行层保持冻结，不属于 Scope v1 后端落地的当前验收。
 
 ## Documentation Architecture
 
 - 用户、Agent、Registry 作者和自动化直接依赖的 CLI、HTTP API、JSON 与 YAML 统一放在 `documents/design/contracts/`，视为需要兼容或显式升级的公共契约。
 - Provider Go interface、Resolver、Observation Store 和 SQLite schema 当前是内部契约或实现细节，不因被记录而成为外部兼容承诺。
-- `documents/design/base-核心概念.md` 维护 Entity、Link/Graph、Binding、Project Route overlay、Resolve、Probe、Observation 等名词与产品生命周期。
-- `documents/design/base-Home与Registry设计.md` 维护 locus-link Home、Scope、Registry Source、项目关联、组合和本地 Store 归属；`documents/design/base-系统设计.md` 从 Canonical Declared View 开始维护 Resolve / Probe → Provider → Observation 的 Core 处理链。
+- `documents/design/base-核心概念.md` 维护 Entity、Link/Graph、Binding、根 Scope Route overlay、Resolve、Probe、Observation 等名词与产品生命周期。
+- `documents/design/base-Scope设计.md` 维护 Scope、Registry Source、显式 import graph、alias、去重、回环阻断和 remote provenance；`documents/design/base-用户级Locus设计.md` 维护用户根入口、项目反向登记、remote cache/refresh 和本机 Store 归属；`documents/design/base-系统设计.md` 从 Declared View 开始维护 Resolve / Probe → Provider → Observation 的 Core 处理链。
 - `documents/design/base-数据设计.md` 维护来源、变换、ownership、持久化、freshness 和 Secret 血缘，不复制公共 schema 或 SQLite 具体表结构。
 - `documents/current-architecture.md` 记录当前代码映射、支持范围和公共契约偏差，不承担目标契约。
 
-## Forward Compatibility Cases
+## Forward Compatibility Boundaries
 
-- PostgreSQL：`production-db` Binding + database Entity facts + explicit Route + credential/docs + Observation，应能选择 native `psql` 或 existing PostgreSQL MCP binding；locus-link Core 不执行 SQL。
-- Gitea：`source/ci-worker/production` Bindings 与 Gitea→FRP/bastion→worker→deploy mechanism Route，应让陌生 Agent 获得结构化 capability/provider/evidence/provenance。
-- 是否新增 Provider binding 取决于某个 Link 是否存在独立 Validate/Describe/SafeProbe contract，而不是对象名称；MCP binding 只保存 reference。
+- PostgreSQL 的 `production-db` Binding、database Entity、explicit Route、credential/docs 与 Observation，以及 Gitea 的 source/worker/production Route 继续作为未来现实案例，不是当前 Scope v1 验收入口。
+- 是否新增 Provider binding 仍取决于 Link 是否需要独立 Validate/Describe/SafeProbe contract，而不是对象名称。
 - Resolve 与 Route Probe 只用第一条 Link 的 `from` 判断调用起点；后续步骤由显式 Route 顺序和 capability fold 约束，不要求每条 Link 都从 current Entity 出发。
-- 下一步优先收敛 transitive import/Source provenance，再建立薄 locus-link MCP contract/Adapter；PostgreSQL或 Gitea 只在现有 slice 无法证明缺失语义时引入。
+- 只有既有 Scope/Resolve/Probe slice 的 E2E 明确证明缺失必要语义时，才重新打开 PostgreSQL、Gitea、MCP 或执行层设计。
 
 ## Verified Implementation Baseline
 
