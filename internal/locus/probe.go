@@ -7,11 +7,13 @@ import (
 )
 
 type ProbeResult struct {
-	InputRef     string        `json:"input_ref"`
-	SubjectType  string        `json:"subject_type"`
-	SubjectID    string        `json:"subject_id"`
-	Status       string        `json:"status"`
-	Observations []Observation `json:"observations"`
+	InputRef       string          `json:"input_ref"`
+	SubjectType    string          `json:"subject_type"`
+	SubjectID      string          `json:"subject_id"`
+	Status         string          `json:"status"`
+	Observations   []Observation   `json:"observations"`
+	Completeness   Completeness    `json:"completeness"`
+	BlockedImports []BlockedImport `json:"blocked_imports"`
 }
 
 type ProbeInputError struct {
@@ -36,11 +38,18 @@ func (r *Registry) Probe(ctx context.Context, inputRef string, runtime RuntimeCo
 			links = append(links, step.Link)
 		}
 	}
+	if len(links) == 0 {
+		return ProbeResult{}, ProbeInputError{Err: errors.New("route requires at least one Link")}
+	}
 	first := r.Links[links[0]]
 	if first.From != runtime.CurrentEntity {
 		return ProbeResult{}, ProbeInputError{Err: fmt.Errorf("%s %s is not applicable from %s", kind, id, runtime.CurrentEntity)}
 	}
-	result := ProbeResult{InputRef: inputRef, SubjectType: kind, SubjectID: id, Status: "success", Observations: make([]Observation, 0, len(links))}
+	result := ProbeResult{
+		InputRef: inputRef, SubjectType: kind, SubjectID: id, Status: "success",
+		Observations: make([]Observation, 0, len(links)), Completeness: r.Completeness,
+		BlockedImports: append([]BlockedImport(nil), r.BlockedImports...),
+	}
 	for _, linkID := range links {
 		prepared, err := r.prepareLink(linkID, runtime, providers)
 		if err != nil {

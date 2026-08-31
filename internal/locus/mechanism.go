@@ -58,8 +58,8 @@ func loadMechanismBindings(registry *Registry, path string) (map[string]Mechanis
 	if err := decodeYAML(absolute, &file); err != nil {
 		return nil, "", err
 	}
-	if file.APIVersion != "locus/v0" {
-		return nil, "", fmt.Errorf("%s: api_version must be locus/v0", absolute)
+	if file.APIVersion != APIVersion {
+		return nil, "", fmt.Errorf("%s: api_version must be %s", absolute, APIVersion)
 	}
 	resolved := make(map[string]MechanismBinding, len(file.Bindings))
 	for ref, binding := range file.Bindings {

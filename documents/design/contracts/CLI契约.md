@@ -49,15 +49,19 @@ Resolve 与 Probe 分开：Resolve 读取声明和证据；Probe 测量现实并
 |---|---|---|---|
 | Core | `locus resolve <target> --capability <name>` | 解析获得目标 capability 的已知路径 | 无 |
 | Core | `locus probe <link-or-route-id>` | 执行 Provider Safe Probe | 追加实际探测 Link 的 Observation |
-| Inspection | `locus context` | 查看当前 Scope、Binding、actor、vantage 和 Store | 无 |
+| Inspection | `locus context` | 查看根来源、Scope graph、registration、cache 与 Runtime Context | 无 |
+| Inspection | `locus graph` | 查看 composed Declared View 与 blocked imports | 无 |
 | Inspection | `locus show <ref-or-id>` | 查看引用解析后的声明对象 | 无 |
-| Inspection | `locus list [entity\|link\|route]` | 列出当前声明 | 无 |
+| Inspection | `locus list [binding\|entity\|link\|route]` | 列出当前声明 | 无 |
 | Inspection | `locus status [link-or-route-id]` | 查看已有 Link 或 Route evidence | 无 |
-| Authoring | `locus init --scope-kind <project\|environment> --scope-id <id>` | 创建最小 Registry | 创建目录和 YAML |
-| Authoring | `locus validate` | 校验 Registry 声明 | 无 |
+| Authoring | `locus user init --scope-id <id>` | 创建用户根 Registry | 创建目录和 YAML |
+| Authoring | `locus init --scope-id <id>` | 创建通用 Scope Registry | 创建目录和 YAML，可选 registration |
+| Authoring | `locus project register|unregister|list` | 管理项目反向登记 | 只修改用户级 State DB |
+| Authoring | `locus refresh [alias-path]` | 显式刷新 remote imports | 获取、校验并原子激活 cache |
+| Authoring | `locus validate` | 校验 Registry 声明与 closure | 无 |
 | Local UI | `locus web` | 启动只监听本机回环地址的 WebUI | 运行本地 HTTP 服务 |
 
-Inspection 用于查看和排错，不是 Resolve 的前置步骤。Authoring 只维护声明，不要求 actor 或 vantage。`web` 读取同一 Registry/Core，启动时不执行 Probe。
+Inspection 用于查看和排错，不是 Resolve 的前置步骤。Authoring 不要求 actor 或 vantage。除显式 `refresh` 外，`graph/list/show/context/resolve/status/probe` 均不得 fetch 或联网。
 
 ## Resolve
 
@@ -65,13 +69,15 @@ Inspection 用于查看和排错，不是 Resolve 的前置步骤。Authoring �
 locus resolve <target> --capability <name> [--from <entity>] [--vantage <name>] [--mechanism-bindings <path>]
 ```
 
-Target 可以是 Project Binding，也可以是可解析的 Entity reference。结果保留输入名称及其 canonical Entity。
+Target 可以是根 Scope Binding，也可以是可解析的 Entity reference。结果保留输入名称及其 canonical Entity。
 
-候选基数：
+Complete view 的候选基数：
 
 - 0 条 Route：`unresolved`；
 - 1 条 Route：`resolved`；
 - 多条 Route：`ambiguous`，返回全部 candidates。
+
+Partial view 无论已发现 0、1 或多条候选，都返回 `status: incomplete`、全部已发现 candidates、无唯一 `route`，退出码 `3`。Complete view 中未知 target 是输入错误；partial view 中未知 target 返回 incomplete，不声称对象不存在。
 
 Candidates 只按 canonical Route ID 稳定排序。Evidence、声明顺序、Provider、Link 数量或最近成功时间都不参与自动选择。
 
@@ -81,7 +87,8 @@ Resolved result 包含：
 - 匹配的显式 Route 和有序 Link；
 - 每一步的 Provider、NativeHint 和 Secret reference；
 - Entity、Link、Route 关联的 documentation references；
-- 当前 Link evidence 和聚合后的 Route evidence。
+- 当前 Link evidence 和聚合后的 Route evidence；
+- 顶层 `completeness` 与 `blocked_imports`。
 
 Resolve 不调用 Probe，也不写 Observation。
 
@@ -101,59 +108,55 @@ Route Probe：
 - 不为未尝试的 Link 写记录；
 - 不创建 Route Observation。
 
-Probe failure 是有效测量结果：stdout 仍返回稳定结果，退出码为 `4`，诊断摘要写 stderr。
+Partial view 中，只允许 Probe 最终 view 内已完整加载并校验的 Link/Route。Blocked 或 unavailable 引用是输入错误，Observation 数量不变。结果仍携带顶层 `completeness` 与 `blocked_imports`。Probe failure 是有效测量结果：stdout 仍返回稳定结果，退出码为 `4`。
 
 ## Inspection 与 Authoring
 
 ### `context`
 
-返回 active Scope、imports、bindings、current Entity、available Provider tools、vantage 和 Store path。
+返回 `root_origin: explicit|project|user`、根 Scope、用户 Registry、imports、bindings、项目 registration、active Source revision/digest、last refresh diagnostics、current Entity、available Provider tools、vantage 和 Store path。
 
-### `show`
+### `graph`
 
-只显示声明和引用解析，不返回 Observation。Binding 必须保留输入名称和 canonical target：
+返回按 canonical ID/alias path 稳定排序的 scopes、import edges、alias paths、bindings、entities、links、routes、Source provenance、`completeness` 和 `blocked_imports`。
 
-```text
-input_ref: production-host
-ref_type: binding
-canonical_target: environment.customer-a::host.prod-01
-object: <canonical Entity declaration>
-```
+### `show`、`list` 与 `status`
 
-### `list`
+`show` 只显示声明和引用解析，不返回 Observation。Binding 保留 input ref、canonical Binding ID 和 canonical target。`list` 支持 `binding|entity|link|route`。`status` 只聚合已加载对象的 evidence。三者都返回顶层 view diagnostics；`show` 引用 blocked object 时为输入错误。
 
-列出 composed Registry 中的 Entity、Link 或 Route，按 canonical ID 稳定排序。
+### `user init`、`init` 与 `project`
 
-### `status`
+- `locus user init --scope-id <id>` 创建 `<LOCUS_HOME>/registry` 的最小 `locus/v1` Registry；已存在非空 Registry 时拒绝覆盖。
+- `locus init --scope-id <id> [--registry <path>] [--import-user <alias>] [--register]` 创建通用 Scope。`--import-user` 写入 expected user `scope_id` 和 `${LOCUS_HOME}/registry` directory Source；`--register` 只在完整校验后登记。
+- `locus project register [--registry <path>]`、`project unregister <scope-id>`、`project list` 只管理反向登记，不改变 imports 或合并声明。
+- `--scope-kind` 不存在。
 
-`status <link-id>` 读取当前 Situated Context 下最新的适用 Link Observation。`status <route-id>` 从 constituent Links 的适用 Observation 动态聚合 Route evidence。Status 与 Resolve、Probe 使用相同的 `--from`、`--vantage` 和本地 mechanism bindings。
+### `refresh`
 
-### `web`
+`locus refresh [alias-path] [--registry]` 无参数时刷新根 closure 的全部 remote imports；参数按 normalized alias path 只刷新目标 edge。JSON 返回 `status: success|partial|failure`、`activated`、`retained`、`refresh_errors`、`completeness`、`blocked_imports`。一项或多项获取或校验失败仍输出结果并退出 `5`；输入或声明错误退出 `2`。
 
-`web` 启动本机 HTTP 服务并提供嵌入式 WebUI。默认使用当前 Registry discovery，可通过 `--registry` 覆盖；`--from`、`--vantage` 和 `--mechanism-bindings` 设置页面的初始 Runtime Context。首版只允许 loopback `--address`，不提供远程服务、认证或远程 Observation Store。
+### `validate` 与 `web`
 
-### `init` 与 `validate`
-
-`init` 创建最小本地 Registry，不初始化 Git。`validate` 校验 Scope、imports、bindings、声明引用、Route、Provider 注册，以及 Registry 中显式提供的完整 Provider data，不连接 endpoint。仅由本地 mechanism bindings 提供的 concrete data 在 Resolve、Probe 或 Status 装配现场时校验。
+`validate` 校验根与已加载 closure，不连接 endpoint、不执行 Provider。Partial 时返回结构化 diagnostics 并退出 `2`。`web` 继续复用同一 Core 和 loopback 边界，本轮不改变 Web 公共契约。
 
 ## Registry discovery 与 Runtime Context
 
-`locus` 默认从 cwd 向父目录查找：
+根选择优先级：
 
-```text
-.locus/registry/scope.yaml
-```
+1. 显式 `--registry`，`root_origin: explicit`；
+2. 从 cwd 向上发现 `.locus/registry/scope.yaml`，`root_origin: project`；
+3. `${LOCUS_HOME}/registry`，`root_origin: user`。
 
-`--registry` 只用于 override、automation、tests 和特殊多 Registry 场景。
+项目 registration 不参与 declaration merge。项目根 context 同时报告其 `scope_id` 是否登记，以及是否显式 import 用户 Registry。
 
 - `--from` 表示当前 operational Entity；Resolve 与 Route Probe 用它匹配第一条 Link 的 `from`，后续步骤由显式 Route 顺序和 capability fold 约束；
-- `--vantage` 表示 Observation 成立的网络位置，用于隔离 evidence。
+- `--vantage` 表示 Observation 成立的网络位置，用于隔离 evidence；
 - `--mechanism-bindings` 指向 workstation-local YAML；它只覆盖 Link 的 concrete executable 和 `provider_data`，不改变 Link、Route、Binding 或 capability identity。
 
-本地 mechanism bindings 文件使用严格 `locus/v0` YAML：
+本地 mechanism bindings 文件使用严格 `locus/v1` YAML：
 
 ```yaml
-api_version: locus/v0
+api_version: locus/v1
 bindings:
   link.prod-ssh:
     executable: C:/Tools/ssh.exe
@@ -164,11 +167,7 @@ bindings:
 
 binding key 必须解析为当前 Declared View 中的 Link；文件拒绝未知字段、重复 key、多 document、非 Link 引用和空 binding。`provider_data` 按字段覆盖声明中的稳定默认值，`executable` 覆盖 Provider 默认 executable。该文件属于 Situated Context 输入，不进入 Registry、Graph 或 canonical identity。
 
-当前契约：
-
-- `context`、`resolve`、`probe`、`status` 要求 `--from`；
-- 未传 `--vantage` 时使用 host-specific fallback；
-- Resolve、Probe 与 Status 通过同一个 Situated Context builder 解析 `from`、vantage 和 mechanism bindings。
+`context`、`resolve`、`probe`、`status` 要求 `--from`；未传 `--vantage` 时使用 host-specific fallback；四个命令通过同一个 Situated Context builder 解析现场输入。
 
 ## 参数
 
@@ -176,10 +175,12 @@ binding key 必须解析为当前 Declared View 中的 Link；文件拒绝未知
 
 | 命令 | command flags |
 |---|---|
-| `init` | `--registry --scope-kind --scope-id` |
-| `validate` | `--registry` |
-| `list` | `--registry` |
-| `show` | `--registry` |
+| `user init` | `--scope-id` |
+| `init` | `--registry --scope-id --import-user --register` |
+| `project register` | `--registry` |
+| `project unregister`、`project list` | 无 |
+| `refresh` | `--registry` |
+| `validate`、`graph`、`list`、`show` | `--registry` |
 | `context` | `--registry --from --vantage --mechanism-bindings` |
 | `resolve` | `--registry --from --vantage --mechanism-bindings --capability` |
 | `probe` | `--registry --from --vantage --mechanism-bindings --timeout` |
@@ -191,18 +192,20 @@ binding key 必须解析为当前 Declared View 中的 Link；文件拒绝未知
 ## 输出与退出码
 
 - 正常结果写 stdout，诊断写 stderr；
+- 所有 Declared View 命令的 JSON 顶层统一携带 `completeness` 与 `blocked_imports`，不创建命令私有 diagnostics；
 - `--json` 返回稳定、可脚本化的结构；
 - NativeHint 使用 executable 和参数数组，不生成 shell command string；
-- Secret value 不进入输出、错误或 Observation；
-- 同类对象、candidates、documentation references 和 Provider tools 使用稳定排序。
+- Secret value、URI userinfo、外部进程 raw stdout/stderr 和 HTTP body 不进入输出、错误、缓存 metadata 或 Observation；
+- 同类对象、candidates、documentation references、alias paths 和 Provider tools 使用稳定排序。
 
 | 代码 | 含义 |
 |---|---|
 | `0` | 成功 |
 | `1` | 内部错误 |
-| `2` | 输入、声明或参数校验错误 |
-| `3` | Resolve unresolved 或 ambiguous |
+| `2` | 输入、声明、参数校验错误，或 Validate partial |
+| `3` | Resolve unresolved、ambiguous 或 incomplete |
 | `4` | Probe 已完成但结果失败；stdout 仍有稳定结果 |
+| `5` | Refresh 至少一项获取或校验失败；stdout 仍有结构化结果 |
 
 ## 测试
 

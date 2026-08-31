@@ -120,6 +120,43 @@ func TestResolveRouteCardinalityAndNoRanking(t *testing.T) {
 		t.Fatalf("resolve invoked Provider.Probe %d time(s)", provider.probeCalls)
 	}
 }
+
+func TestResolvePartialNeverClaimsUniqueRouteOrMissingTarget(t *testing.T) {
+	ctx := context.Background()
+	storePath := workspaceTestPath(t, "resolve-partial", "state.db")
+	if err := os.RemoveAll(filepath.Dir(storePath)); err != nil {
+		t.Fatal(err)
+	}
+	store, err := OpenStore(storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	provider := &recordingProvider{}
+	providers := &Providers{values: map[string]Provider{provider.Name(): provider}}
+	registry := resolverTestRegistry()
+	link := resolverTestLink("project.test::link.only")
+	registry.Links[link.CanonicalID] = link
+	registry.Routes["project.test::route.only"] = resolverTestRoute("project.test::route.only", link.CanonicalID)
+	registry.Completeness = Partial
+	registry.BlockedImports = []BlockedImport{{SourceScopeID: "project.test", AliasPath: []string{"missing"}, Reason: "source_unavailable"}}
+
+	result, err := registry.Resolve(ctx, "target", "shell", RuntimeContext{
+		CurrentEntity: link.From, Vantage: "office-lan",
+	}, providers, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "incomplete" || result.Route != nil || len(result.Candidates) != 1 || len(result.BlockedImports) != 1 {
+		t.Fatalf("partial view claimed a complete result: %#v", result)
+	}
+	unknown, err := registry.Resolve(ctx, "unknown", "shell", RuntimeContext{
+		CurrentEntity: link.From, Vantage: "office-lan",
+	}, providers, store)
+	if err != nil || unknown.Status != "incomplete" || unknown.Route != nil {
+		t.Fatalf("partial unknown target was treated as absent: %#v, %v", unknown, err)
+	}
+}
 func TestResolveRouteUsesFirstLinkForStartingContext(t *testing.T) {
 	ctx := context.Background()
 	storePath := workspaceTestPath(t, "resolve-route-start", "state.db")
@@ -238,8 +275,16 @@ func TestRouteEvidenceExpiryAndAggregation(t *testing.T) {
 
 func resolverTestRegistry() *Registry {
 	return &Registry{
-		Manifest: Manifest{Scope: Scope{ID: "project.test", Kind: "project"}},
-		Bindings: map[string]string{"target": "environment.test::host"},
+		Manifest:     Manifest{APIVersion: APIVersion, ScopeID: "project.test"},
+		RootScopeID:  "project.test",
+		Completeness: Complete,
+		Scopes: map[string]Manifest{
+			"project.test":     {APIVersion: APIVersion, ScopeID: "project.test"},
+			"environment.test": {APIVersion: APIVersion, ScopeID: "environment.test"},
+		},
+		Bindings: map[string]*Binding{
+			"project.test::target": {ID: "target", CanonicalID: "project.test::target", ScopeID: "project.test", Target: "environment.test::host"},
+		},
 		Entities: map[string]*Entity{
 			"environment.test::host": {
 				CanonicalID: "environment.test::host",
@@ -252,8 +297,10 @@ func resolverTestRegistry() *Registry {
 				}},
 			},
 		},
-		Links:  map[string]*Link{},
-		Routes: map[string]*Route{},
+		Links:         map[string]*Link{},
+		Routes:        map[string]*Route{},
+		scopeAliases:  map[string]map[string]string{"project.test": {}, "environment.test": {}},
+		sourceDigests: map[string]string{},
 	}
 }
 

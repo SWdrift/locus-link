@@ -12,16 +12,29 @@ import (
 )
 
 type GraphView struct {
-	Scopes   []Scope       `json:"scopes"`
-	Bindings []BindingView `json:"bindings"`
-	Entities []EntityView  `json:"entities"`
-	Links    []GraphLink   `json:"links"`
-	Routes   []GraphRoute  `json:"routes"`
+	Scopes         []ScopeView     `json:"scopes"`
+	ImportEdges    []ImportEdge    `json:"import_edges"`
+	Bindings       []BindingView   `json:"bindings"`
+	Entities       []EntityView    `json:"entities"`
+	Links          []GraphLink     `json:"links"`
+	Routes         []GraphRoute    `json:"routes"`
+	Completeness   Completeness    `json:"completeness"`
+	BlockedImports []BlockedImport `json:"blocked_imports"`
+}
+
+type ScopeView struct {
+	ID               string     `json:"id"`
+	ContentDigest    string     `json:"content_digest"`
+	Source           Source     `json:"source"`
+	ResolvedRevision string     `json:"resolved_revision,omitempty"`
+	AliasPaths       [][]string `json:"alias_paths"`
 }
 
 type BindingView struct {
-	Role   string `json:"role"`
-	Target string `json:"target"`
+	CanonicalID string `json:"canonical_id"`
+	ScopeID     string `json:"scope_id"`
+	Role        string `json:"role"`
+	Target      string `json:"target"`
 }
 
 type EntityView struct {
@@ -52,11 +65,13 @@ type GraphRoute struct {
 }
 
 type StatusView struct {
-	CurrentEntity string            `json:"current_entity"`
-	Vantage       string            `json:"vantage"`
-	Summary       map[string]int    `json:"summary"`
-	Links         []LinkEvidence    `json:"links"`
-	Routes        []RouteStatusView `json:"routes"`
+	CurrentEntity  string            `json:"current_entity"`
+	Vantage        string            `json:"vantage"`
+	Summary        map[string]int    `json:"summary"`
+	Links          []LinkEvidence    `json:"links"`
+	Routes         []RouteStatusView `json:"routes"`
+	Completeness   Completeness      `json:"completeness"`
+	BlockedImports []BlockedImport   `json:"blocked_imports"`
 }
 
 type RouteStatusView struct {
@@ -100,15 +115,23 @@ func (r *Registry) Graph() (GraphView, error) {
 			documentIDs[association.ObjectID] = append(documentIDs[association.ObjectID], record.view.ID)
 		}
 	}
-	result := GraphView{}
-	for _, manifest := range r.Scopes {
-		result.Scopes = append(result.Scopes, manifest.Scope)
+	result := GraphView{
+		ImportEdges: append([]ImportEdge(nil), r.ImportEdges...), Completeness: r.Completeness,
+		BlockedImports: append([]BlockedImport(nil), r.BlockedImports...),
 	}
-	sort.Slice(result.Scopes, func(i, j int) bool { return result.Scopes[i].ID < result.Scopes[j].ID })
-	for role, target := range r.Bindings {
-		result.Bindings = append(result.Bindings, BindingView{Role: role, Target: target})
+	for _, scopeID := range sortedMapKeys(r.Provenance) {
+		provenance := r.Provenance[scopeID]
+		result.Scopes = append(result.Scopes, ScopeView{
+			ID: scopeID, ContentDigest: provenance.ContentDigest, Source: provenance.Source,
+			ResolvedRevision: provenance.ResolvedRevision, AliasPaths: provenance.AliasPaths,
+		})
 	}
-	sort.Slice(result.Bindings, func(i, j int) bool { return result.Bindings[i].Role < result.Bindings[j].Role })
+	for _, binding := range r.Bindings {
+		result.Bindings = append(result.Bindings, BindingView{
+			CanonicalID: binding.CanonicalID, ScopeID: binding.ScopeID, Role: binding.ID, Target: binding.Target,
+		})
+	}
+	sort.Slice(result.Bindings, func(i, j int) bool { return result.Bindings[i].CanonicalID < result.Bindings[j].CanonicalID })
 	for _, entity := range r.Entities {
 		result.Entities = append(result.Entities, EntityView{
 			CanonicalID: entity.CanonicalID, ScopeID: entity.ScopeID, Kind: entity.Kind, Name: entity.Name,
@@ -137,9 +160,11 @@ func (r *Registry) Graph() (GraphView, error) {
 
 func (r *Registry) Status(ctx context.Context, runtime RuntimeContext, providers *Providers, store *Store) (StatusView, error) {
 	result := StatusView{
-		CurrentEntity: runtime.CurrentEntity,
-		Vantage:       runtime.Vantage,
-		Summary:       map[string]int{"failure": 0, "stale": 0, "unknown": 0, "success": 0},
+		CurrentEntity:  runtime.CurrentEntity,
+		Vantage:        runtime.Vantage,
+		Summary:        map[string]int{"failure": 0, "stale": 0, "unknown": 0, "success": 0},
+		Completeness:   r.Completeness,
+		BlockedImports: append([]BlockedImport(nil), r.BlockedImports...),
 	}
 	for _, id := range sortedMapKeys(r.Links) {
 		evidence, err := r.LinkEvidence(ctx, id, runtime, providers, store)

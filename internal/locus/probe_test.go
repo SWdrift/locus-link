@@ -32,12 +32,18 @@ func TestRouteProbeUsesFirstLinkForStartingContext(t *testing.T) {
 		Steps:       []RouteStep{{Link: first.CanonicalID}, {Link: second.CanonicalID}},
 	}
 	registry := &Registry{
-		Entities: map[string]*Entity{},
+		Manifest:     Manifest{APIVersion: APIVersion, ScopeID: "project.test"},
+		RootScopeID:  "project.test",
+		Scopes:       map[string]Manifest{"project.test": {APIVersion: APIVersion, ScopeID: "project.test"}},
+		Completeness: Complete,
+		Entities:     map[string]*Entity{},
 		Links: map[string]*Link{
 			first.CanonicalID:  first,
 			second.CanonicalID: second,
 		},
-		Routes: map[string]*Route{route.CanonicalID: route},
+		Routes:        map[string]*Route{route.CanonicalID: route},
+		scopeAliases:  map[string]map[string]string{"project.test": {}},
+		sourceDigests: map[string]string{},
 	}
 
 	result, err := registry.Probe(ctx, route.CanonicalID, RuntimeContext{

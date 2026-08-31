@@ -17,8 +17,9 @@ type LinkEvidence struct {
 	Observation *Observation `json:"observation,omitempty"`
 }
 type ResolvedBinding struct {
-	Role   string `json:"role"`
-	Target string `json:"target"`
+	CanonicalID string `json:"canonical_id"`
+	Role        string `json:"role"`
+	Target      string `json:"target"`
 }
 
 type ResolvedEntity struct {
@@ -48,31 +49,37 @@ type ResolvedRoute struct {
 }
 
 type ResolveResult struct {
-	Status       string           `json:"status"`
-	InputTarget  string           `json:"input_target"`
-	Target       string           `json:"canonical_target"`
-	TargetEntity ResolvedEntity   `json:"target_entity"`
-	Binding      *ResolvedBinding `json:"binding,omitempty"`
-	Capability   string           `json:"capability"`
-	Route        *ResolvedRoute   `json:"route,omitempty"`
-	Candidates   []ResolvedRoute  `json:"candidates,omitempty"`
+	Status         string           `json:"status"`
+	InputTarget    string           `json:"input_target"`
+	Target         string           `json:"canonical_target,omitempty"`
+	TargetEntity   ResolvedEntity   `json:"target_entity,omitempty"`
+	Binding        *ResolvedBinding `json:"binding,omitempty"`
+	Capability     string           `json:"capability"`
+	Route          *ResolvedRoute   `json:"route,omitempty"`
+	Candidates     []ResolvedRoute  `json:"candidates"`
+	Completeness   Completeness     `json:"completeness"`
+	BlockedImports []BlockedImport  `json:"blocked_imports"`
 }
 
 func (r *Registry) Resolve(ctx context.Context, targetRef, capability string, runtime RuntimeContext, providers *Providers, store *Store) (ResolveResult, error) {
+	result := ResolveResult{
+		Status: "unresolved", InputTarget: targetRef, Capability: capability, Completeness: r.Completeness,
+		BlockedImports: append([]BlockedImport(nil), r.BlockedImports...), Candidates: []ResolvedRoute{},
+	}
 	target, err := r.ResolveEntity(targetRef)
 	if err != nil {
+		if r.Completeness == Partial {
+			result.Status = "incomplete"
+			return result, nil
+		}
 		return ResolveResult{}, err
 	}
 	targetEntity := r.Entities[target]
-	result := ResolveResult{
-		Status:       "unresolved",
-		InputTarget:  targetRef,
-		Target:       target,
-		TargetEntity: makeResolvedEntity(targetEntity),
-		Capability:   capability,
-	}
-	if boundTarget, ok := r.Bindings[targetRef]; ok {
-		result.Binding = &ResolvedBinding{Role: targetRef, Target: boundTarget}
+	result.Target = target
+	result.TargetEntity = makeResolvedEntity(targetEntity)
+	if bindingID, bindingErr := r.resolveRef(r.RootScopeID, targetRef, "binding"); bindingErr == nil {
+		binding := r.Bindings[bindingID]
+		result.Binding = &ResolvedBinding{CanonicalID: binding.CanonicalID, Role: binding.ID, Target: binding.Target}
 	}
 	for _, route := range r.Routes {
 		candidate, applicable, resolveErr := r.resolveRoute(ctx, route, target, capability, runtime, providers, store)
@@ -86,6 +93,10 @@ func (r *Registry) Resolve(ctx context.Context, targetRef, capability string, ru
 	sort.Slice(result.Candidates, func(i, j int) bool {
 		return result.Candidates[i].CanonicalID < result.Candidates[j].CanonicalID
 	})
+	if r.Completeness == Partial {
+		result.Status = "incomplete"
+		return result, nil
+	}
 	switch len(result.Candidates) {
 	case 0:
 		return result, nil

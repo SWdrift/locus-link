@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/spf13/cobra v1.10.1
 	go.yaml.in/yaml/v4 v4.0.0-rc.6
+	gonum.org/v1/gonum v0.16.0
 	modernc.org/sqlite v1.46.1
 )
 
