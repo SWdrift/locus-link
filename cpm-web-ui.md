@@ -8,6 +8,7 @@
 - 中文 `zh-CN` 是默认设计与验收语言，英文 `en-US` 同步交付。技术标识保持原值，应用解释与操作文案本地化。
 - Element Plus 是基础组件库：静态 theme-chalk CSS 兼容现有 `style-src 'self'` CSP，`ElConfigProvider` 提供 `zh-cn`/`en` 组件 locale，CSS variables 可统一 light/dark 与紧凑 token。
 - Vue I18n 管理应用 message catalog；Element Plus locale 只管理组件库内建文案。两者在同一个 locale state 下切换，避免两套语言状态分叉。
+- 通用控件视觉由 Element Plus 原生组件与公开 theme token 负责；自定义 CSS 只保留应用布局和 Graph、evidence 等产品特有表达，避免复制组件库按钮、菜单、Card、Alert、Tag、Empty 或 Skeleton 的状态系统。
 - 主题支持 `system`、`light`、`dark`，默认跟随系统；语言和主题偏好只存浏览器本地，不进入 locus-link Core、Registry 或 Observation。
 - Graph 继续由 Vue Flow 渲染，但自动布局迁移到 ELK layered algorithm。ELK 只计算稳定位置，Route 和 evidence 仍是现有声明图上的视觉 overlay。
 

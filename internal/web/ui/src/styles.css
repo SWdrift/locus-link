@@ -97,14 +97,10 @@ h3 { margin-top: var(--space-1); font-size: 17px; }
 .header-actions { min-width: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-end; gap: var(--space-2); }
 .context-controls, .preference-controls { min-width: 0; display: flex; align-items: flex-end; gap: var(--space-2); }
 .context-controls label, .preference-controls label, .resolve-box label { min-width: 0; display: grid; gap: var(--space-1); color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
-.context-controls .el-input { width: clamp(140px, 14vw, 190px); }
+.context-input { width: clamp(140px, 14vw, 190px); }
 .preference-controls label:first-child { width: 112px; }
 .preference-controls label:last-child { width: 104px; }
-.preference-controls select { width: 100%; height: 32px; padding: 0 28px 0 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); outline: none; color: var(--text-primary); background: var(--surface-panel); font-size: 12px; text-transform: none; }
-.preference-controls select:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent); }
-.connection { min-height: 32px; display: inline-flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-3); border: 1px solid color-mix(in srgb, var(--status-success) 55%, var(--border-subtle)); border-radius: 999px; color: var(--status-success); background: color-mix(in srgb, var(--status-success) 10%, var(--surface-panel)); font-size: 11px; white-space: nowrap; }
-.connection::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.connection.error { color: var(--status-failure); border-color: color-mix(in srgb, var(--status-failure) 55%, var(--border-subtle)); background: color-mix(in srgb, var(--status-failure) 10%, var(--surface-panel)); }
+.connection { align-self: flex-end; }
 
 .section-intro { position: relative; display: grid; gap: var(--space-2); margin-bottom: var(--space-5); }
 .section-intro p { max-width: 720px; color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
@@ -116,8 +112,6 @@ h3 { margin-top: var(--space-1); font-size: 17px; }
   .topbar { flex-direction: column; }
   .header-actions { width: 100%; justify-content: flex-start; }
 }
-.loading-dot { width: 12px; height: 12px; border: 2px solid var(--border-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 800px) {
   .app-shell { grid-template-columns: 1fr; }
@@ -139,6 +133,6 @@ h3 { margin-top: var(--space-1); font-size: 17px; }
   .topbar { gap: var(--space-3); margin-bottom: var(--space-5); }
   .header-actions, .context-controls, .preference-controls { width: 100%; }
   .context-controls, .preference-controls { display: grid; grid-template-columns: 1fr 1fr; }
-  .context-controls label, .context-controls .el-input, .preference-controls label { width: 100% !important; }
+  .context-controls label, .context-input, .preference-controls label { width: 100% !important; }
   .connection { width: 100%; justify-content: center; }
 }

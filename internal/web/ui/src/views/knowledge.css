@@ -1,10 +1,8 @@
 .knowledge-layout { min-width: 0; display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 600px; overflow: hidden; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-panel); box-shadow: var(--shadow); }
 .document-list { min-width: 0; padding: var(--space-3); overflow: auto; border-right: 1px solid var(--border-subtle); }
-.document-choice { width: 100%; height: auto !important; min-height: 64px; justify-content: stretch !important; padding: var(--space-3) !important; border: 1px solid transparent !important; border-radius: var(--radius-sm) !important; text-align: left; }
-.document-choice > span { width: 100%; min-width: 0; display: grid; justify-items: start; gap: 3px; }
-.document-choice.active { border-color: var(--border-strong) !important; background: var(--accent-soft) !important; }
-.document-choice span, .document-choice small { max-width: 100%; overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.document-reader { min-width: 0; border: 0 !important; border-radius: 0 !important; }
+.document-summary { width: 100%; min-width: 0; display: grid; gap: 3px; line-height: 1.25; }
+.document-summary span, .document-summary small { max-width: 100%; overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.document-reader { min-width: 0; }
 .document-reader header { min-width: 0; display: flex; justify-content: space-between; align-items: flex-end; gap: var(--space-4); padding-bottom: var(--space-4); border-bottom: 1px solid var(--border-subtle); }
 .document-reader header > small { min-width: 0; overflow: hidden; color: var(--text-muted); text-overflow: ellipsis; white-space: nowrap; }
 .markdown-body, .plain-document { max-width: 760px; margin: 0; padding: var(--space-5) 0; color: var(--text-secondary); font: inherit; line-height: 1.72; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -14,7 +12,6 @@
 .markdown-body h3 { font-size: 16px; }
 .markdown-body code { padding: 2px 5px; border-radius: var(--radius-sm); color: var(--accent); background: var(--accent-soft); }
 .document-reader footer { display: flex; flex-wrap: wrap; gap: var(--space-2); padding-top: var(--space-4); border-top: 1px solid var(--border-subtle); }
-.document-reader footer span { padding: 4px 7px; border-radius: var(--radius-sm); color: var(--text-secondary); background: var(--surface-subtle); font-size: 10px; }
 
 @media (max-width: 800px) {
   .knowledge-layout { grid-template-columns: 1fr; }

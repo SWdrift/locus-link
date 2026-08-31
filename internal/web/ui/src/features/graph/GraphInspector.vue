@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ElAlert, ElButton, ElInput } from 'element-plus'
+import { ElAlert, ElButton, ElInput, ElMenu, ElMenuItem } from 'element-plus'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { EvidenceStatus, GraphView, ProbeResult, ResolveResult, StatusView } from '../../api'
@@ -34,17 +34,21 @@ const shortID = (value: string) => value.split('::').at(-1) ?? value
   <aside class="inspector-panel">
     <section>
       <div class="inspector-heading"><span class="eyebrow">{{ t('graph.routeList') }}</span><ElButton text size="small" @click="emit('relayout')">{{ t('graph.relayout') }}</ElButton></div>
-      <ElButton v-for="route in graph.routes" :key="route.canonical_id" class="route-choice" :class="{ active: selectedRoute === route.canonical_id }" :aria-pressed="selectedRoute === route.canonical_id" @click="selectedRoute = route.canonical_id">
-        <span><strong>{{ shortID(route.canonical_id) }}</strong><small>{{ route.steps.length }} {{ t('status.steps') }}</small></span><StatusBadge :status="routeStatus(route.canonical_id)" />
-      </ElButton>
+      <ElMenu :default-active="selectedRoute" @select="selectedRoute = $event">
+        <ElMenuItem v-for="route in graph.routes" :key="route.canonical_id" :index="route.canonical_id">
+          <span class="menu-item-content"><span><strong>{{ shortID(route.canonical_id) }}</strong><small>{{ route.steps.length }} {{ t('status.steps') }}</small></span><StatusBadge :status="routeStatus(route.canonical_id)" /></span>
+        </ElMenuItem>
+      </ElMenu>
       <ElButton v-if="activeRoute" type="primary" size="small" :loading="probing" :disabled="!operationalReady" @click="emit('probe', activeRoute.canonical_id)">{{ t('graph.probeRoute') }}</ElButton>
     </section>
 
     <section>
       <span class="eyebrow">{{ t('status.links') }}</span>
-      <ElButton v-for="link in graph.links" :key="link.canonical_id" text class="link-choice" :class="{ active: selectedLink === link.canonical_id }" :aria-pressed="selectedLink === link.canonical_id" @click="selectedLink = link.canonical_id">
-        <span class="technical-id">{{ shortID(link.canonical_id) }}</span><StatusBadge :status="linkStatus.get(link.canonical_id) ?? 'unknown'" />
-      </ElButton>
+      <ElMenu :default-active="selectedLink" @select="selectedLink = $event">
+        <ElMenuItem v-for="link in graph.links" :key="link.canonical_id" :index="link.canonical_id">
+          <span class="menu-item-content"><span class="technical-id">{{ shortID(link.canonical_id) }}</span><StatusBadge :status="linkStatus.get(link.canonical_id) ?? 'unknown'" /></span>
+        </ElMenuItem>
+      </ElMenu>
     </section>
 
     <section v-if="selectedLinkView" class="selected-detail">

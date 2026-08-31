@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { ElAlert } from 'element-plus'
+import { ElAlert, ElSkeleton, ElTag } from 'element-plus'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getGraph, probe, resolveRoute } from '../api'
@@ -71,14 +71,14 @@ const probeMutation = useMutation({
     <div class="graph-toolbar">
       <div><span class="eyebrow">{{ t('graph.eyebrow') }}</span><h2>{{ t('graph.title') }}</h2></div>
       <div class="summary-pills" aria-live="polite">
-        <span>{{ graph.data.value?.entities.length ?? 0 }} {{ t('graph.entities') }}</span>
-        <span>{{ graph.data.value?.links.length ?? 0 }} {{ t('graph.links') }}</span>
-        <span>{{ graph.data.value?.routes.length ?? 0 }} {{ t('graph.routes') }}</span>
+        <ElTag effect="plain" round>{{ graph.data.value?.entities.length ?? 0 }} {{ t('graph.entities') }}</ElTag>
+        <ElTag effect="plain" round>{{ graph.data.value?.links.length ?? 0 }} {{ t('graph.links') }}</ElTag>
+        <ElTag effect="plain" round>{{ graph.data.value?.routes.length ?? 0 }} {{ t('graph.routes') }}</ElTag>
       </div>
     </div>
 
     <AsyncState :loading="graph.isPending.value" :error="graph.error.value" :empty="empty" :empty-text="t('graph.empty')">
-      <div v-if="layoutPending" class="async-state" role="status">{{ t('graph.layout') }}</div>
+      <ElSkeleton v-if="layoutPending" :rows="6" animated :aria-label="t('graph.layout')" />
       <ElAlert v-else-if="layoutError" type="error" :closable="false" :title="t('common.error')" :description="layoutError.message" />
       <div v-else-if="layout && graph.data.value" class="graph-workspace">
         <GraphCanvas :key="layout.fingerprint + layoutRevision" :layout="layout" :link-status="linkStatus" :active-steps="activeSteps" :selected-link="selectedLink" @select-link="selectedLink = $event" />

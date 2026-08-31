@@ -34,6 +34,7 @@
 - 主题提供 `system`、`light`、`dark` 三种模式，默认跟随系统并允许用户显式覆盖；用户选择只保存在浏览器本地，不进入 Core 或 Registry。
 - 采用 Element Plus 作为基础组件库，通过静态 theme-chalk CSS、顶层 `ElConfigProvider`、locale 与 CSS variable overrides 统一组件外观和本地化；业务图、operational status 等产品特有表达继续使用窄的自有组件，不套用通用后台模板。
 - 应用文案使用 Vue I18n；Element Plus locale 只负责组件内建文案，不替代应用消息目录。
+- 组件外观优先使用 Element Plus 的组件、variant、size、state、slot 和 theme token；不得为通用按钮、输入框、选择器、菜单、Card、Alert、Tag、Empty、Skeleton 等重写一套视觉样式。自定义 CSS 只用于应用布局、Graph 等产品特有可视化和组件库无法表达的窄差异。
 
 ### 国际化
 
@@ -73,6 +74,7 @@
 - Markdown 继续禁用内嵌 HTML并经 DOMPurify 净化；不得通过前端变更扩大外连、脚本、frame、Secret 或 Provider data 暴露面。
 - 破坏 `/api/v0` 字段、语义、副作用或安全边界时，先更新上位设计与契约并迁移所有调用方；不得用前端兼容分支掩盖契约漂移。
 - 保持组件职责按用户可见能力划分；出现重复查询、重复状态机或跨视图大段重复标记时，抽取已有稳定概念，不为单次使用创建抽象层。
+- 选择或组合 Element Plus 组件时先用公开 props、slots 与 CSS variables；不得依赖 `.el-*` 内部 DOM 结构覆盖样式。确需覆盖时必须说明组件库能力缺口，并将选择器限制在本 feature 根节点。
 
 ### 可用性与验证
 

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { useQuery } from '@tanstack/vue-query'
 import DOMPurify from 'dompurify'
+import { ElCard, ElMenu, ElMenuItem, ElTag } from 'element-plus'
 import MarkdownIt from 'markdown-it'
-import { ElButton, ElCard } from 'element-plus'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getDocument, getKnowledge } from '../api'
@@ -30,9 +30,11 @@ const empty = computed(() => Boolean(knowledge.data.value && !knowledge.data.val
     <AsyncState :loading="knowledge.isPending.value" :error="knowledge.error.value" :empty="empty" :empty-text="t('knowledge.noDocumentationHint')">
       <div class="knowledge-layout">
         <aside class="document-list">
-          <ElButton v-for="item in knowledge.data.value?.documents" :key="item.id" text class="document-choice" :class="{ active: selected === item.id }" :aria-pressed="selected === item.id" @click="selected = item.id">
-            <span>{{ item.scope_id }}</span><strong>{{ item.title }}</strong><small>{{ t('knowledge.references', { count: item.associations.length }) }} · {{ item.path }}</small>
-          </ElButton>
+          <ElMenu :default-active="selected" @select="selected = $event">
+            <ElMenuItem v-for="item in knowledge.data.value?.documents" :key="item.id" :index="item.id">
+              <span class="document-summary"><span>{{ item.scope_id }}</span><strong>{{ item.title }}</strong><small>{{ t('knowledge.references', { count: item.associations.length }) }} · {{ item.path }}</small></span>
+            </ElMenuItem>
+          </ElMenu>
         </aside>
         <ElCard shadow="never" class="document-reader">
           <AsyncState :loading="documentQuery.isPending.value" :error="documentQuery.error.value" :empty="!selected">
@@ -40,7 +42,7 @@ const empty = computed(() => Boolean(knowledge.data.value && !knowledge.data.val
               <header><div><span class="eyebrow">{{ documentQuery.data.value.scope_id }}</span><h3>{{ documentQuery.data.value.title }}</h3></div><small>{{ documentQuery.data.value.path }}</small></header>
               <div v-if="documentQuery.data.value.format === 'markdown'" class="markdown-body" v-html="rendered"></div>
               <pre v-else class="plain-document">{{ documentQuery.data.value.body }}</pre>
-              <footer><span v-for="item in documentQuery.data.value.associations" :key="item.object_id + item.ref">{{ item.object_type }} · {{ item.object_id }}</span></footer>
+              <footer><ElTag v-for="item in documentQuery.data.value.associations" :key="item.object_id + item.ref" type="info" effect="light">{{ item.object_type }} · {{ item.object_id }}</ElTag></footer>
             </template>
           </AsyncState>
         </ElCard>

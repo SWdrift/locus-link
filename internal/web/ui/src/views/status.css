@@ -1,22 +1,9 @@
 .status-page { min-width: 0; }
 .status-summary { min-width: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
-.metric-card .el-card__body { min-height: 104px; display: grid; align-content: center; gap: var(--space-1); }
-.metric-card span { color: var(--text-secondary); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
-.metric-card strong { font-size: 28px; font-weight: 600; }
-.metric-card small { color: var(--text-muted); }
 .detail-panel { margin-top: var(--space-3); }
 .panel-heading { display: grid; gap: 2px; }
-.table-scroll { width: 100%; overflow-x: auto; }
-table { width: 100%; min-width: 620px; border-collapse: collapse; margin-top: var(--space-3); }
-th, td { padding: 10px var(--space-2); border-top: 1px solid var(--border-subtle); text-align: left; color: var(--text-secondary); font-size: 12px; }
-th { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; }
-.state-badge { display: inline-flex; padding: 3px 7px; border-radius: 999px; font-size: 10px; font-weight: 600; white-space: nowrap; }
-.state-badge.success { color: var(--status-success); background: color-mix(in srgb, var(--status-success) 13%, transparent); }
-.state-badge.failure { color: var(--status-failure); background: color-mix(in srgb, var(--status-failure) 13%, transparent); }
-.state-badge.stale { color: var(--status-stale); background: color-mix(in srgb, var(--status-stale) 13%, transparent); }
-.state-badge.unknown { color: var(--status-unknown); background: color-mix(in srgb, var(--status-unknown) 13%, transparent); }
+.detail-panel .panel-heading { margin-bottom: var(--space-3); }
 
 @media (max-width: 600px) {
   .status-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .metric-card .el-card__body { min-height: 88px; }
 }
