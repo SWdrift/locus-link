@@ -67,7 +67,7 @@ func newRegistry(root *ScopeRegistry) *Registry {
 		Root: root.Root, RootScopeID: root.Manifest.ScopeID, Manifest: root.Manifest,
 		Scopes: map[string]Manifest{}, Aliases: map[string]string{}, AliasPaths: map[string][][]string{},
 		Bindings: map[string]*Binding{}, Entities: map[string]*Entity{}, Links: map[string]*Link{}, Routes: map[string]*Route{},
-		Provenance: map[string]ScopeProvenance{}, Completeness: Complete,
+		Provenance: map[string]ScopeProvenance{}, ImportEdges: []ImportEdge{}, BlockedImports: []BlockedImport{}, Completeness: Complete,
 		local: map[string]map[string]string{}, scopeAliases: map[string]map[string]string{},
 		sourceDigests: map[string]string{}, sources: map[string]string{}, scopeRegistries: map[string]*ScopeRegistry{},
 	}
@@ -248,7 +248,7 @@ func (r *Registry) ResolveAny(ref string) (string, string, error) {
 }
 
 func (r *Registry) ObjectIDs(kind string) []string {
-	var ids []string
+	ids := []string{}
 	if kind == "" || kind == "binding" {
 		for id := range r.Bindings {
 			ids = append(ids, id)

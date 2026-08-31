@@ -116,8 +116,9 @@ func (r *Registry) Graph() (GraphView, error) {
 		}
 	}
 	result := GraphView{
-		ImportEdges: append([]ImportEdge(nil), r.ImportEdges...), Completeness: r.Completeness,
-		BlockedImports: append([]BlockedImport(nil), r.BlockedImports...),
+		Scopes: []ScopeView{}, ImportEdges: append([]ImportEdge{}, r.ImportEdges...), Bindings: []BindingView{},
+		Entities: []EntityView{}, Links: []GraphLink{}, Routes: []GraphRoute{}, Completeness: r.Completeness,
+		BlockedImports: append([]BlockedImport{}, r.BlockedImports...),
 	}
 	for _, scopeID := range sortedMapKeys(r.Provenance) {
 		provenance := r.Provenance[scopeID]
@@ -163,8 +164,10 @@ func (r *Registry) Status(ctx context.Context, runtime RuntimeContext, providers
 		CurrentEntity:  runtime.CurrentEntity,
 		Vantage:        runtime.Vantage,
 		Summary:        map[string]int{"failure": 0, "stale": 0, "unknown": 0, "success": 0},
+		Links:          []LinkEvidence{},
+		Routes:         []RouteStatusView{},
 		Completeness:   r.Completeness,
-		BlockedImports: append([]BlockedImport(nil), r.BlockedImports...),
+		BlockedImports: append([]BlockedImport{}, r.BlockedImports...),
 	}
 	for _, id := range sortedMapKeys(r.Links) {
 		evidence, err := r.LinkEvidence(ctx, id, runtime, providers, store)
