@@ -20,7 +20,7 @@ flowchart LR
     Registry --> Resolve["Resolve<br/>筛选显式 Route"]
     Runtime --> Resolve
     Providers["Provider registry<br/>frp-stcp · ssh · salt"] --> Resolve
-    SQLite[("SQLite<br/>observations")] -->|"Latest(subject, vantage)"| Resolve
+    SQLite[("SQLite<br/>observations")] -->|"LatestApplicable<br/>完整 provenance 匹配"| Resolve
     Resolve --> Result["resolved / unresolved / ambiguous<br/>NativeHint + Evidence"]
 
     Registry --> Probe["Probe Link 或 Route"]
@@ -63,6 +63,13 @@ flowchart LR
 - 加载校验确认引用存在、Link 有 Provider、Route 非空，并按 step 顺序检查每个 Link 的 `requires` 是否已由更早 step 的 `provides` 提供。当前不校验相邻 step 的 `to/from` 连通性。
 - `documentation` 当前只是 Entity、Link、Route 输出中的静态 `{ref,title}` 元数据；没有扫描 `docs/`、解析文档内容或按上下文发现文档的实现。
 
+### 2.3 Workstation-local mechanism bindings
+
+`context`、`resolve`、`probe`、`status` 和 `web` 可通过 `--mechanism-bindings <path>` 装载 Registry 外的严格 `locus/v0` YAML。文件按 Link reference 覆盖 executable 和 `provider_data`；原始 Link、Route、Binding、capability、Graph 与 canonical identity 不变。空 binding、非 Link 引用、未知字段、重复 key 和多 document 被拒绝。
+
+CLI 的 Runtime Context builder 统一解析 current Entity、vantage 与该 binding 文件。Resolve/Probe/Status 使用覆盖后的 effective Link；`show`、Graph 和静态 Registry validation 仍只读取声明。
+
+
 ## 3. 当前 Resolve
 
 ### 3.1 输入与适用性
@@ -74,11 +81,12 @@ CLI 输入为：
 - `--from <entity>`：解析为 `RuntimeContext.CurrentEntity`，Resolve 必填；
 - `--vantage <name>`：未提供时默认为 `host:<hostname>`；
 - Registry、Provider registry 和 SQLite Store：由 CLI 内部装配。
+- 可选 `--mechanism-bindings <path>`：覆盖当前 workstation 的 concrete executable/provider data；
 
 一条显式 Route 只有同时满足以下条件才是候选：
 
 1. Route 至少有一个 step，最后一个 Link 的 `to` 等于规范 target；
-2. **每一个** step Link 的 `from` 都等于当前 `--from` Entity；
+2. 第一条 step Link 的 `from` 等于当前 `--from` Entity；后续 step 由显式 Route 顺序和 capability fold 约束；
 3. 每个 Link 的 Provider 已注册，Provider 字段校验和 NativeHint 渲染成功；
 4. 所有 step 的 `provides` 并集包含请求 capability。
 
@@ -90,9 +98,9 @@ CLI 输入为：
 - 1 个候选：`resolved`，放入 `route`；
 - 多个候选：`ambiguous`，按 Route 规范 ID 排序后放入 `candidates`，不做自动 ranking。
 
-每个候选输出规范 Route ID、由末 Link 得到的 target、排序后的 `derived_provides`、聚合证据，以及每个 step 的 Link ID、Provider、NativeHint、Link evidence。Resolve 只调用 `Provider.Validate/Render` 并读取 SQLite，绝不调用 `Provider.Probe`。
+每个结果保留输入 target、Binding 解释和 canonical target Entity facts。每个候选输出规范 Route ID、由末 Link 得到的 target、排序后的 `derived_provides`、Route/Link documentation references、聚合证据，以及每个 step 的 Link ID、Provider、NativeHint、Link evidence。Resolve 只调用 `Provider.Validate/Render` 并读取 SQLite，绝不调用 `Provider.Probe`。
 
-Link evidence 取当前 `(subject=link-id, vantage)` 最新 Observation：不存在为 `unknown`；非零 `expires_at` 已过期为 `stale`；没有显式期限或尚未过期时沿用已存的 `success/failure`。Route 聚合优先级为：任一 failure → `failure`；全 success → `success`；其余若都有 Observation 且至少一个 stale → `stale`；否则 `unknown`。
+Link evidence 只从完整 applicability 条件相同的 Observation 中选择 latest：canonical Link、vantage、declaration digest、Source content digest、effective binding digest、Probe kind/version 和 relevant context fingerprint 必须全部匹配。不存在匹配记录为 `unknown`；非零 `expires_at` 已过期为 `stale`；没有显式期限或尚未过期时沿用已存的 `success/failure`。Route 聚合优先级为：任一 failure → `failure`；全 success → `success`；其余若都有 Observation 且至少一个 stale → `stale`；否则 `unknown`。
 
 CLI 对 `unresolved` 和 `ambiguous` 仍输出结构化结果，但退出码为 3。
 
@@ -108,7 +116,7 @@ Provider registry 仅注册以下三项：
 
 补充事实：
 
-- Registry 装载会确认 Provider 已注册，并调用对应 `Validate` 检查必填字段、字符串类型、非空值和 1–65535 端口范围；各 Probe 在 dial 或启动进程前再次执行相同校验。
+- Registry 装载会确认 Provider 已注册；Registry 中非空 `provider_data` 必须通过对应完整校验，空 `provider_data` 允许由 workstation-local binding 提供。Resolve、Probe、Status 在消费前都校验合成后的 effective Link；各 Probe 在 dial 或启动进程前再次执行同一 Provider 校验。
 - TCP connect 自带 3 秒超时并受上层 context 限制。`probe --timeout` 默认 10 秒，Route 的全部 step 共用同一个 timeout；Provider 外部命令都通过该 context 取消。
 - 外部命令的 stdout/stderr 不进入错误或 Observation；失败只保存操作名和 timeout、canceled、exit code 或 start failure 等稳定类别。
 - `context.runtime.available_tools` 只通过 PATH 查找 `frpc`、`ssh`、`salt` 后排序展示，不是 Resolve 的可用性门禁。
@@ -118,23 +126,24 @@ Provider registry 仅注册以下三项：
 
 ## 5. Observation 与 SQLite
 
-Observation 字段为 `subject`、`vantage`、`status`、`observed_at`、`expires_at`、`provider`、JSON `evidence` 和 `error`，SQLite 另分配自增 ID。
+Observation 字段为 `subject`、`vantage`、`declaration_digest`、`source_digest`、`binding_digest`、`probe_kind`、`probe_semantics_version`、`context_fingerprint`、`status`、`observed_at`、`expires_at`、`provider`、JSON `evidence` 和 `error`，SQLite 另分配自增 ID。
 
-- Store 是 append-only `observations` 表；索引覆盖 `(subject, vantage, observed_at DESC)`。新 Probe 不覆盖历史行。
+- Store 是 append-only `observations` 表；applicability 索引覆盖 subject、vantage 和全部 provenance 字段。新 Probe 不覆盖历史行。
+- 打开旧 Store 时通过 additive `ALTER TABLE` 补齐 provenance columns。旧行保留，但空 provenance 不匹配新查询，因此不会继续证明当前 Link。
 - 默认路径：Windows 为 `%LOCALAPPDATA%/locus-link/state.db`；其他平台优先 `$XDG_STATE_HOME/locus-link/state.db`，否则 `~/.local/state/locus-link/state.db`。`LOCUS_STATE_PATH` 可显式覆盖。
-- Probe 开始时使用 UTC 时间并设 15 分钟有效期；FRP、SSH、Salt 分别写入 `frpc-config-and-tcp-connect`、`tcp-connect-and-ssh-config`、`salt-test-ping` evidence kind。声明错误在执行和 Append 前被拒绝；实际测量成功或失败才持久化。
-- `Latest` 按 subject 与 vantage 隔离，依 `observed_at DESC, id DESC` 取一条；stale 是读取时根据过期时间派生，不回写数据库。
-- `status <link>` 返回该 vantage 的最新 Link evidence；`status <route>` 聚合各 step 最新 evidence；无参数 `status` 汇总 Registry 内全部 Link 在该 vantage 下的 success/failure/stale/unknown 数量。
+- Probe 开始时使用 UTC 时间并设 15 分钟有效期；FRP、SSH、Salt 分别使用 version `1` 的 `frpc-config-and-tcp-connect`、`tcp-connect-and-ssh-config`、`salt-test-ping` Probe semantics。声明/binding 错误在执行和 Append 前被拒绝；实际测量成功或失败才持久化。
+- Resolve、Status 和 Route evidence 都调用同一 applicability implementation；stale 是读取时根据过期时间派生，不回写数据库。
+- `status` 使用和 Resolve/Probe 相同的 current Entity、vantage 与 mechanism bindings；指定 Link/Route 时返回适用 evidence，无参数时汇总 Registry 内全部 Link。
 
 ```mermaid
 stateDiagram-v2
-    [*] --> unknown: 尚无该 subject + vantage 的 Observation
+    [*] --> unknown: 尚无完整 applicability 匹配的 Observation
     unknown --> success: safe probe 通过并 Append
     unknown --> failure: safe probe 失败并 Append
     success --> stale: 当前时间超过 expires_at
     failure --> stale: 当前时间超过 expires_at
-    stale --> success: 后续 probe 成功并成为 Latest
-    stale --> failure: 后续 probe 失败并成为 Latest
+    stale --> success: 后续适用 probe 成功并成为 latest
+    stale --> failure: 后续适用 probe 失败并成为 latest
     failure --> success: 后续 probe 成功并成为 Latest
     success --> failure: 后续 probe 失败并成为 Latest
 ```
@@ -155,9 +164,9 @@ stateDiagram-v2
 | `status [link-or-route-id]` | 查看最新 Link/Route evidence 或按状态汇总 |
 | `web` | 装载 Registry 与本机 Store，启动 loopback HTTP server；Vue Graph/Status/Knowledge 提供声明图、证据、文档、Resolve 与显式 safe Probe |
 
-`context`、`resolve`、`probe` 需要 `--from`；`resolve` 还需要 `--capability`。`web` 的 `--from/--vantage` 是初始页面上下文；`web` 只允许 loopback `--address`。各命令可用 `--registry` 覆盖发现结果。
+`context`、`resolve`、`probe`、`status` 需要 `--from`；`resolve` 还需要 `--capability`。四个命令都接受 `--vantage` 和 `--mechanism-bindings`，并复用同一个 Runtime Context builder。`web` 的同名 flags 是初始页面上下文；`web` 只允许 loopback `--address`。各命令可用 `--registry` 覆盖发现结果。
 
-`validate`、`list`、`show` 只装载声明，不解析 runtime、PATH、vantage 或 Observation state；`context`、`resolve`、`probe`、`status` 分别按实际消费装配运行时或状态依赖。
+`validate`、`list`、`show` 只装载声明，不解析 runtime、PATH、vantage、local mechanism bindings 或 Observation state；`context`、`resolve`、`probe`、`status` 按统一现场语义装配运行时。
 
 ## 7. 当前 E2E 基线
 
@@ -169,21 +178,17 @@ stateDiagram-v2
 - workstation、host、FRP server 三类 Entity；
 - `frp-stcp + ssh` 两步 Shell Route，以及单步 Salt Route；
 - Environment host 与 Project Link/Route 关联的两份 Scope 文档；
-- 工作区内的模拟 `frpc/ssh/salt` 可执行文件和真实本地 TCP listener。
+- 工作区内的默认 `frpc/ssh/salt` 模拟 executable、两套 workstation-local FRP/SSH mechanism binding 文件和真实本地 TCP listener。
 
-E2E 已覆盖 `init`、严格命令参数、Registry 向上发现、validate、context、list、show；证明 Resolve 不触发 Probe；证明 Shell Route 的 FRP/SSH 顺序 Probe、直接 Link Probe、Salt success/failure/recovery、SQLite 追加计数、status 与 Resolve evidence 更新、不同 vantage 隔离，以及 unresolved/ambiguous 与“不按 evidence 排名”。
+E2E 已覆盖 `init`、严格命令参数、Registry 向上发现、validate、context、list、show；证明 Resolve 不触发 Probe；证明 Shell Route 的 FRP/SSH 顺序 Probe、直接 Link Probe、Salt success/failure/recovery、SQLite 追加计数、完整 Observation provenance、Status/Resolve applicability、不同 vantage 隔离，以及 unresolved/ambiguous 与“不按 evidence 排名”。
+
+同一 Registry 的 dual-workstation slice 证明两套 local binding 得到相同 canonical target、Binding、Link/Route identity、capability 与 documentation，但 NativeHint executable 可以不同；A binding 的 Probe success 在 B binding 下保持 `unknown`。
 
 同一 E2E 还启动真实 `locus web` 子进程，复用上述 Registry、helper 与 Store，覆盖 Context、Graph、Status、Knowledge、Resolve、Probe failure/recovery、vantage 隔离、文档去重/路径边界、Provider data/Secret 不泄漏和嵌入式 UI 入口。浏览器已对 Graph、Status、Knowledge、Resolve、Probe 及窄屏布局完成实际交互验证。
 
 ## 8. 公共契约符合度
 
-当前公共契约与代码的已知偏差：
-
-| 公共契约 | 当前实现 | 影响 |
-|---|---|---|
-| Resolve 返回 Binding 解释、target Entity facts 和 documentation refs | 当前只返回 input target、canonical target、Route、NativeHint 和 evidence | 公共 Resolve result 尚未完整实现 |
-
-这些偏差是实现任务，不改变公共契约。修复后必须更新本表和 E2E 基线。
+当前 CLI、Web JSON 与声明公共契约没有已知的可观察行为偏差；后续发现偏差时在此记录，并同步契约与 E2E 基线。
 
 ### 目标设计偏差
 
@@ -191,10 +196,9 @@ E2E 已覆盖 `init`、严格命令参数、Registry 向上发现、validate、c
 
 | 目标不变量 | 当前实现 | 风险 |
 |---|---|---|
-| Observation applicability 包含 declaration digest、provider binding、Probe kind/version 与 relevant context fingerprint | Store 只按 canonical subject + vantage 查询 latest；记录没有 declaration digest 或 Probe semantics version | Link 声明或 Safe Probe 语义变化后，旧 success 可能被误认为仍能证明当前 Link |
 | Declared View 支持显式 transitive import DAG | loader 当前只装载 active Project 的一层 Environment imports | 多层显式依赖不能按目标语义组合 |
-| 每个声明保留 authoritative Source 与 immutable revision/content digest | 当前只从本地路径装载，无 Source registration/revision provenance | 无法诊断 mutable remote revision 前后差异 |
-| Runtime 由 Declared View 与 Situated Context 分离 | 当前 `RuntimeContext` 较窄且没有 Profile/Home，尚未出现 Profile 注入；边界未被代码模型显式表达 | 后续实现 Profile 时若直接扩展 Registry，可能形成第二套 import |
+| 每个声明保留 authoritative Source 与 immutable revision/content digest | 当前 local Source 只计算文件 content digest，没有 Source registration 或 immutable revision | 无法诊断 mutable remote revision 前后差异 |
+| Profile/Home 为 Situated Context 提供可审阅默认值 | 当前显式 `--from/--vantage/--mechanism-bindings` 已与 Registry 分离，但没有 Profile/Home 默认选择 | 多命令调用需要重复提供同一现场输入 |
 
 当前只有 embedded discovery，不存在 managed candidate，因此尚未发生 embedded/managed 静默 precedence；实现 Catalog discovery 时必须采用候选收集与显式冲突规则。
 

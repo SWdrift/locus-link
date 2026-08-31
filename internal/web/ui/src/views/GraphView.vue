@@ -10,7 +10,7 @@ import { getGraph, getStatus, probe, resolveRoute } from '../api'
 
 const props = defineProps<{ context?: LocusContext; from: string; vantage: string }>()
 const graph = useQuery({ queryKey: ['graph'], queryFn: getGraph })
-const status = useQuery({ queryKey: computed(() => ['status', props.vantage]), queryFn: () => getStatus(props.vantage), enabled: computed(() => Boolean(props.vantage)) })
+const status = useQuery({ queryKey: computed(() => ['status', props.from, props.vantage]), queryFn: () => getStatus(props.from, props.vantage), enabled: computed(() => Boolean(props.from && props.vantage)) })
 const queryClient = useQueryClient()
 const selectedRoute = ref('')
 const selectedLink = ref('')

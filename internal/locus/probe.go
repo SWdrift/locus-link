@@ -36,17 +36,21 @@ func (r *Registry) Probe(ctx context.Context, inputRef string, runtime RuntimeCo
 			links = append(links, step.Link)
 		}
 	}
+	first := r.Links[links[0]]
+	if first.From != runtime.CurrentEntity {
+		return ProbeResult{}, ProbeInputError{Err: fmt.Errorf("%s %s is not applicable from %s", kind, id, runtime.CurrentEntity)}
+	}
 	result := ProbeResult{InputRef: inputRef, SubjectType: kind, SubjectID: id, Status: "success", Observations: make([]Observation, 0, len(links))}
 	for _, linkID := range links {
-		link := r.Links[linkID]
-		if link.From != runtime.CurrentEntity {
-			return ProbeResult{}, ProbeInputError{Err: fmt.Errorf("link %s is not applicable from %s", linkID, runtime.CurrentEntity)}
+		prepared, err := r.prepareLink(linkID, runtime, providers)
+		if err != nil {
+			return ProbeResult{}, ProbeInputError{Err: err}
 		}
-		provider, ok := providers.Get(link.Provider)
-		if !ok {
-			return ProbeResult{}, ProbeInputError{Err: fmt.Errorf("unsupported provider %s", link.Provider)}
-		}
-		observation, err := store.Append(ctx, provider.Probe(ctx, link, runtime))
+		observation := applyObservationApplicability(
+			prepared.provider.Probe(ctx, prepared.link, runtime),
+			prepared.applicability,
+		)
+		observation, err = store.Append(ctx, observation)
 		if err != nil {
 			return ProbeResult{}, err
 		}

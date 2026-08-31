@@ -29,13 +29,14 @@ type CLI struct {
 }
 
 type options struct {
-	Registry   string
-	From       string
-	Vantage    string
-	Timeout    string
-	Capability string
-	ScopeKind  string
-	ScopeID    string
+	Registry          string
+	From              string
+	Vantage           string
+	MechanismBindings string
+	Timeout           string
+	Capability        string
+	ScopeKind         string
+	ScopeID           string
 }
 
 type cliError struct {
@@ -58,12 +59,6 @@ type commandState struct {
 type runtimeStateAssembly struct {
 	registry  *locus.Registry
 	runtime   locus.RuntimeContext
-	statePath string
-}
-
-type observationStateAssembly struct {
-	registry  *locus.Registry
-	vantage   string
 	statePath string
 }
 
@@ -266,8 +261,7 @@ func (c *CLI) statusCommand(state *commandState) *cobra.Command {
 			return state.set(result, err)
 		},
 	}
-	addRegistryFlag(command, &opts)
-	command.Flags().StringVar(&opts.Vantage, "vantage", "", "observation vantage")
+	addRuntimeFlags(command, &opts)
 	return command
 }
 
@@ -278,6 +272,7 @@ func addRegistryFlag(command *cobra.Command, opts *options) {
 func addRuntimeFlags(command *cobra.Command, opts *options) {
 	command.Flags().StringVar(&opts.From, "from", "", "current operational entity")
 	command.Flags().StringVar(&opts.Vantage, "vantage", "", "network observation vantage")
+	command.Flags().StringVar(&opts.MechanismBindings, "mechanism-bindings", "", "workstation-local mechanism bindings file")
 }
 
 func exactArgs(want int) cobra.PositionalArgs {
@@ -467,7 +462,7 @@ func (c *CLI) probe(parent context.Context, inputRef string, opts options) (any,
 }
 
 func (c *CLI) status(args []string, opts options) (any, error) {
-	assembly, err := c.assembleObservationState(opts)
+	assembly, err := c.assembleRuntimeState(opts)
 	if err != nil {
 		return nil, cliError{code: 2, err: err}
 	}
@@ -477,35 +472,28 @@ func (c *CLI) status(args []string, opts options) (any, error) {
 	}
 	defer store.Close()
 	ctx := context.Background()
-	if len(args) == 1 {
-		id, kind, resolveErr := assembly.registry.ResolveAny(args[0])
-		if resolveErr != nil {
-			return nil, cliError{code: 2, err: resolveErr}
-		}
-		switch kind {
-		case "link":
-			observation, latestErr := store.Latest(ctx, id, assembly.vantage)
-			return map[string]any{
-				"link_id":  id,
-				"vantage":  assembly.vantage,
-				"evidence": locus.ClassifyLinkEvidence(id, observation),
-			}, latestErr
-		case "route":
-			evidence, evidenceErr := assembly.registry.RouteEvidence(ctx, assembly.registry.Routes[id], assembly.vantage, store)
-			return map[string]any{"route_id": id, "vantage": assembly.vantage, "evidence": evidence}, evidenceErr
-		default:
-			return nil, cliError{code: 2, err: errors.New("status accepts only Link or Route")}
-		}
+	providers := locus.NewProviders()
+	if len(args) == 0 {
+		return assembly.registry.Status(ctx, assembly.runtime, providers, store)
 	}
-	counts := map[string]int{"failure": 0, "stale": 0, "unknown": 0, "success": 0}
-	for id := range assembly.registry.Links {
-		observation, latestErr := store.Latest(ctx, id, assembly.vantage)
-		if latestErr != nil {
-			return nil, latestErr
-		}
-		counts[locus.ClassifyLinkEvidence(id, observation).Status]++
+	id, kind, err := assembly.registry.ResolveAny(args[0])
+	if err != nil {
+		return nil, cliError{code: 2, err: err}
 	}
-	return map[string]any{"vantage": assembly.vantage, "links": counts}, nil
+	switch kind {
+	case "link":
+		evidence, err := assembly.registry.LinkEvidence(ctx, id, assembly.runtime, providers, store)
+		return map[string]any{
+			"link_id": id, "current_entity": assembly.runtime.CurrentEntity, "vantage": assembly.runtime.Vantage, "evidence": evidence,
+		}, err
+	case "route":
+		evidence, err := assembly.registry.RouteEvidence(ctx, assembly.registry.Routes[id], assembly.runtime, providers, store)
+		return map[string]any{
+			"route_id": id, "current_entity": assembly.runtime.CurrentEntity, "vantage": assembly.runtime.Vantage, "evidence": evidence,
+		}, err
+	default:
+		return nil, cliError{code: 2, err: errors.New("status accepts only Link or Route")}
+	}
 }
 
 func (c *CLI) loadRegistryDeclarations(opts options) (*locus.Registry, error) {
@@ -531,7 +519,9 @@ func (c *CLI) assembleRuntimeState(opts options) (runtimeStateAssembly, error) {
 	if err != nil {
 		return runtimeStateAssembly{}, err
 	}
-	runtime, err := locus.RequiredRuntime(registry, opts.From, opts.Vantage)
+	runtime, err := locus.BuildRuntime(registry, locus.RuntimeInput{
+		From: opts.From, Vantage: opts.Vantage, MechanismBindingsPath: opts.MechanismBindings,
+	})
 	if err != nil {
 		return runtimeStateAssembly{}, err
 	}
@@ -540,20 +530,4 @@ func (c *CLI) assembleRuntimeState(opts options) (runtimeStateAssembly, error) {
 		return runtimeStateAssembly{}, err
 	}
 	return runtimeStateAssembly{registry: registry, runtime: runtime, statePath: statePath}, nil
-}
-
-func (c *CLI) assembleObservationState(opts options) (observationStateAssembly, error) {
-	registry, err := c.loadRegistryDeclarations(opts)
-	if err != nil {
-		return observationStateAssembly{}, err
-	}
-	vantage, err := locus.ObservationVantage(opts.Vantage)
-	if err != nil {
-		return observationStateAssembly{}, err
-	}
-	statePath, err := locus.DefaultStatePath()
-	if err != nil {
-		return observationStateAssembly{}, err
-	}
-	return observationStateAssembly{registry: registry, vantage: vantage, statePath: statePath}, nil
 }

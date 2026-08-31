@@ -110,6 +110,7 @@ Entity、Link/Graph、Binding 和 Project Route overlay 的产品含义见[基�
 - 前序 Link 累计提供 capability，后序 Link 的 `requires` 必须由此前累计结果满足；
 - Route target 由最后一条 Link 的 `to` 得到，Route provides 由全部步骤累计得到；
 - Route 的 capability fold 与 Entity `from/to` 关系分别校验，不把 Route 限制为严格连续的拓扑路径。
+- Resolve 与 Route Probe 用 Situated Context 的 current Entity 匹配第一条 Link 的 `from`，后续步骤由显式 Route 顺序和 capability fold 约束；
 
 ### 2. 运行时视图
 

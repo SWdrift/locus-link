@@ -52,10 +52,11 @@ type GraphRoute struct {
 }
 
 type StatusView struct {
-	Vantage string            `json:"vantage"`
-	Summary map[string]int    `json:"summary"`
-	Links   []LinkEvidence    `json:"links"`
-	Routes  []RouteStatusView `json:"routes"`
+	CurrentEntity string            `json:"current_entity"`
+	Vantage       string            `json:"vantage"`
+	Summary       map[string]int    `json:"summary"`
+	Links         []LinkEvidence    `json:"links"`
+	Routes        []RouteStatusView `json:"routes"`
 }
 
 type RouteStatusView struct {
@@ -134,19 +135,22 @@ func (r *Registry) Graph() (GraphView, error) {
 	return result, nil
 }
 
-func (r *Registry) Status(ctx context.Context, vantage string, store *Store) (StatusView, error) {
-	result := StatusView{Vantage: vantage, Summary: map[string]int{"failure": 0, "stale": 0, "unknown": 0, "success": 0}}
+func (r *Registry) Status(ctx context.Context, runtime RuntimeContext, providers *Providers, store *Store) (StatusView, error) {
+	result := StatusView{
+		CurrentEntity: runtime.CurrentEntity,
+		Vantage:       runtime.Vantage,
+		Summary:       map[string]int{"failure": 0, "stale": 0, "unknown": 0, "success": 0},
+	}
 	for _, id := range sortedMapKeys(r.Links) {
-		observation, err := store.Latest(ctx, id, vantage)
+		evidence, err := r.LinkEvidence(ctx, id, runtime, providers, store)
 		if err != nil {
 			return StatusView{}, err
 		}
-		evidence := ClassifyLinkEvidence(id, observation)
 		result.Links = append(result.Links, evidence)
 		result.Summary[evidence.Status]++
 	}
 	for _, id := range sortedMapKeys(r.Routes) {
-		evidence, err := r.RouteEvidence(ctx, r.Routes[id], vantage, store)
+		evidence, err := r.RouteEvidence(ctx, r.Routes[id], runtime, providers, store)
 		if err != nil {
 			return StatusView{}, err
 		}

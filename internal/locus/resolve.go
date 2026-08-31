@@ -2,7 +2,6 @@ package locus
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"time"
 )
@@ -17,29 +16,46 @@ type LinkEvidence struct {
 	Status      string       `json:"status"`
 	Observation *Observation `json:"observation,omitempty"`
 }
+type ResolvedBinding struct {
+	Role   string `json:"role"`
+	Target string `json:"target"`
+}
+
+type ResolvedEntity struct {
+	CanonicalID   string            `json:"canonical_id"`
+	ScopeID       string            `json:"scope_id"`
+	Kind          string            `json:"kind"`
+	Name          string            `json:"name"`
+	Labels        map[string]string `json:"labels,omitempty"`
+	Documentation []Documentation   `json:"documentation,omitempty"`
+}
 
 type ResolvedStep struct {
-	LinkID     string       `json:"link_id"`
-	Provider   string       `json:"provider"`
-	NativeHint NativeHint   `json:"native_hint"`
-	Evidence   LinkEvidence `json:"evidence"`
+	LinkID        string          `json:"link_id"`
+	Provider      string          `json:"provider"`
+	NativeHint    NativeHint      `json:"native_hint"`
+	Documentation []Documentation `json:"documentation,omitempty"`
+	Evidence      LinkEvidence    `json:"evidence"`
 }
 
 type ResolvedRoute struct {
-	CanonicalID     string         `json:"canonical_id"`
-	DerivedTarget   string         `json:"derived_target"`
-	DerivedProvides []string       `json:"derived_provides"`
-	EvidenceStatus  string         `json:"evidence_status"`
-	Steps           []ResolvedStep `json:"steps"`
+	CanonicalID     string          `json:"canonical_id"`
+	DerivedTarget   string          `json:"derived_target"`
+	DerivedProvides []string        `json:"derived_provides"`
+	Documentation   []Documentation `json:"documentation,omitempty"`
+	EvidenceStatus  string          `json:"evidence_status"`
+	Steps           []ResolvedStep  `json:"steps"`
 }
 
 type ResolveResult struct {
-	Status      string          `json:"status"`
-	InputTarget string          `json:"input_target"`
-	Target      string          `json:"canonical_target"`
-	Capability  string          `json:"capability"`
-	Route       *ResolvedRoute  `json:"route,omitempty"`
-	Candidates  []ResolvedRoute `json:"candidates,omitempty"`
+	Status       string           `json:"status"`
+	InputTarget  string           `json:"input_target"`
+	Target       string           `json:"canonical_target"`
+	TargetEntity ResolvedEntity   `json:"target_entity"`
+	Binding      *ResolvedBinding `json:"binding,omitempty"`
+	Capability   string           `json:"capability"`
+	Route        *ResolvedRoute   `json:"route,omitempty"`
+	Candidates   []ResolvedRoute  `json:"candidates,omitempty"`
 }
 
 func (r *Registry) Resolve(ctx context.Context, targetRef, capability string, runtime RuntimeContext, providers *Providers, store *Store) (ResolveResult, error) {
@@ -47,11 +63,16 @@ func (r *Registry) Resolve(ctx context.Context, targetRef, capability string, ru
 	if err != nil {
 		return ResolveResult{}, err
 	}
+	targetEntity := r.Entities[target]
 	result := ResolveResult{
-		Status:      "unresolved",
-		InputTarget: targetRef,
-		Target:      target,
-		Capability:  capability,
+		Status:       "unresolved",
+		InputTarget:  targetRef,
+		Target:       target,
+		TargetEntity: makeResolvedEntity(targetEntity),
+		Capability:   capability,
+	}
+	if boundTarget, ok := r.Bindings[targetRef]; ok {
+		result.Binding = &ResolvedBinding{Role: targetRef, Target: boundTarget}
 	}
 	for _, route := range r.Routes {
 		candidate, applicable, resolveErr := r.resolveRoute(ctx, route, target, capability, runtime, providers, store)
@@ -77,6 +98,16 @@ func (r *Registry) Resolve(ctx context.Context, targetRef, capability string, ru
 	}
 	return result, nil
 }
+func makeResolvedEntity(entity *Entity) ResolvedEntity {
+	return ResolvedEntity{
+		CanonicalID:   entity.CanonicalID,
+		ScopeID:       entity.ScopeID,
+		Kind:          entity.Kind,
+		Name:          entity.Name,
+		Labels:        entity.Labels,
+		Documentation: append([]Documentation(nil), entity.Documentation...),
+	}
+}
 
 func (r *Registry) resolveRoute(ctx context.Context, route *Route, target, capability string, runtime RuntimeContext, providers *Providers, store *Store) (ResolvedRoute, bool, error) {
 	if len(route.Steps) == 0 {
@@ -86,30 +117,38 @@ func (r *Registry) resolveRoute(ctx context.Context, route *Route, target, capab
 	if last.To != target {
 		return ResolvedRoute{}, false, nil
 	}
+	first := r.Links[route.Steps[0].Link]
+	if first.From != runtime.CurrentEntity {
+		return ResolvedRoute{}, false, nil
+	}
 	available := map[string]bool{}
-	result := ResolvedRoute{CanonicalID: route.CanonicalID, DerivedTarget: last.To}
+	result := ResolvedRoute{
+		CanonicalID:   route.CanonicalID,
+		DerivedTarget: last.To,
+		Documentation: append([]Documentation(nil), route.Documentation...),
+	}
 	for _, step := range route.Steps {
-		link := r.Links[step.Link]
-		if link.From != runtime.CurrentEntity {
-			return ResolvedRoute{}, false, nil
+		prepared, err := r.prepareLink(step.Link, runtime, providers)
+		if err != nil {
+			return ResolvedRoute{}, false, err
 		}
-		provider, ok := providers.Get(link.Provider)
-		if !ok {
-			return ResolvedRoute{}, false, fmt.Errorf("unsupported provider %s", link.Provider)
-		}
-		for _, issue := range provider.Validate(link) {
-			return ResolvedRoute{}, false, fmt.Errorf("%s", issue)
-		}
+		link, provider := prepared.link, prepared.provider
 		hint, err := provider.Render(link, runtime)
 		if err != nil {
 			return ResolvedRoute{}, false, err
 		}
-		observation, err := store.Latest(ctx, link.CanonicalID, runtime.Vantage)
+		observation, err := store.LatestApplicable(ctx, prepared.applicability)
 		if err != nil {
 			return ResolvedRoute{}, false, err
 		}
 		evidence := ClassifyLinkEvidence(link.CanonicalID, observation)
-		result.Steps = append(result.Steps, ResolvedStep{LinkID: link.CanonicalID, Provider: link.Provider, NativeHint: hint, Evidence: evidence})
+		result.Steps = append(result.Steps, ResolvedStep{
+			LinkID:        link.CanonicalID,
+			Provider:      link.Provider,
+			NativeHint:    hint,
+			Documentation: append([]Documentation(nil), link.Documentation...),
+			Evidence:      evidence,
+		})
 		for _, provided := range link.Provides {
 			available[provided] = true
 		}
@@ -161,15 +200,26 @@ func aggregateEvidence(steps []ResolvedStep) string {
 	return "unknown"
 }
 
-func (r *Registry) RouteEvidence(ctx context.Context, route *Route, vantage string, store *Store) (RouteEvidence, error) {
+func (r *Registry) LinkEvidence(ctx context.Context, linkID string, runtime RuntimeContext, providers *Providers, store *Store) (LinkEvidence, error) {
+	prepared, err := r.prepareLink(linkID, runtime, providers)
+	if err != nil {
+		return LinkEvidence{}, err
+	}
+	observation, err := store.LatestApplicable(ctx, prepared.applicability)
+	if err != nil {
+		return LinkEvidence{}, err
+	}
+	return ClassifyLinkEvidence(linkID, observation), nil
+}
+
+func (r *Registry) RouteEvidence(ctx context.Context, route *Route, runtime RuntimeContext, providers *Providers, store *Store) (RouteEvidence, error) {
 	result := RouteEvidence{}
 	var steps []ResolvedStep
 	for _, step := range route.Steps {
-		observation, err := store.Latest(ctx, step.Link, vantage)
+		evidence, err := r.LinkEvidence(ctx, step.Link, runtime, providers, store)
 		if err != nil {
 			return result, err
 		}
-		evidence := ClassifyLinkEvidence(step.Link, observation)
 		result.Links = append(result.Links, evidence)
 		steps = append(steps, ResolvedStep{Evidence: evidence})
 	}

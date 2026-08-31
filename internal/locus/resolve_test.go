@@ -10,19 +10,27 @@ import (
 
 type recordingProvider struct {
 	probeCalls int
+	version    string
 }
 
 func (p *recordingProvider) Name() string       { return "recording" }
 func (p *recordingProvider) Executable() string { return "recording" }
+func (p *recordingProvider) ProbeSemantics() ProbeSemantics {
+	version := p.version
+	if version == "" {
+		version = "1"
+	}
+	return ProbeSemantics{Kind: "recording", Version: version}
+}
 func (p *recordingProvider) Validate(*Link) []string {
 	return nil
 }
 func (p *recordingProvider) Render(link *Link, _ RuntimeContext) (NativeHint, error) {
 	return NativeHint{Executable: p.Executable(), Args: []string{link.CanonicalID}}, nil
 }
-func (p *recordingProvider) Probe(context.Context, *Link, RuntimeContext) Observation {
+func (p *recordingProvider) Probe(_ context.Context, link *Link, runtime RuntimeContext) Observation {
 	p.probeCalls++
-	return Observation{}
+	return newObservation(link, runtime, p.Name(), "recording")
 }
 
 func TestResolveRouteCardinalityAndNoRanking(t *testing.T) {
@@ -60,6 +68,15 @@ func TestResolveRouteCardinalityAndNoRanking(t *testing.T) {
 	if resolved.Status != "resolved" || resolved.Route == nil || resolved.Route.CanonicalID != "project.test::route.only" || len(resolved.Candidates) != 0 {
 		t.Fatalf("unexpected resolved result: %#v", resolved)
 	}
+	if resolved.Binding == nil || resolved.Binding.Role != "target" || resolved.Binding.Target != "environment.test::host" {
+		t.Fatalf("missing binding explanation: %#v", resolved.Binding)
+	}
+	if resolved.TargetEntity.CanonicalID != "environment.test::host" || resolved.TargetEntity.Name != "Target host" || len(resolved.TargetEntity.Documentation) != 1 {
+		t.Fatalf("missing target entity facts: %#v", resolved.TargetEntity)
+	}
+	if len(resolved.Route.Documentation) != 1 || len(resolved.Route.Steps[0].Documentation) != 1 {
+		t.Fatalf("missing route or Link documentation: %#v", resolved.Route)
+	}
 
 	delete(registry.Routes, "project.test::route.only")
 	successLink := resolverTestLink("project.test::link.success")
@@ -67,10 +84,21 @@ func TestResolveRouteCardinalityAndNoRanking(t *testing.T) {
 	registry.Routes["project.test::route.a"] = resolverTestRoute("project.test::route.a", failureLink.CanonicalID)
 	registry.Routes["project.test::route.b"] = resolverTestRoute("project.test::route.b", successLink.CanonicalID)
 	now := time.Now()
-	for _, observation := range []Observation{
-		{Subject: failureLink.CanonicalID, Vantage: runtime.Vantage, Status: "failure", ObservedAt: now, ExpiresAt: now.Add(time.Hour), Provider: provider.Name()},
-		{Subject: successLink.CanonicalID, Vantage: runtime.Vantage, Status: "success", ObservedAt: now, Provider: provider.Name()},
+	for _, value := range []struct {
+		link   *Link
+		status string
+		expiry time.Time
+	}{
+		{link: failureLink, status: "failure", expiry: now.Add(time.Hour)},
+		{link: successLink, status: "success"},
 	} {
+		prepared, err := registry.prepareLink(value.link.CanonicalID, runtime, providers)
+		if err != nil {
+			t.Fatal(err)
+		}
+		observation := applyObservationApplicability(Observation{
+			Status: value.status, ObservedAt: now, ExpiresAt: value.expiry, Provider: provider.Name(),
+		}, prepared.applicability)
 		if _, err := store.Append(ctx, observation); err != nil {
 			t.Fatal(err)
 		}
@@ -92,6 +120,45 @@ func TestResolveRouteCardinalityAndNoRanking(t *testing.T) {
 		t.Fatalf("resolve invoked Provider.Probe %d time(s)", provider.probeCalls)
 	}
 }
+func TestResolveRouteUsesFirstLinkForStartingContext(t *testing.T) {
+	ctx := context.Background()
+	storePath := workspaceTestPath(t, "resolve-route-start", "state.db")
+	if err := os.RemoveAll(filepath.Dir(storePath)); err != nil {
+		t.Fatal(err)
+	}
+	store, err := OpenStore(storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	provider := &recordingProvider{}
+	providers := &Providers{values: map[string]Provider{provider.Name(): provider}}
+	registry := resolverTestRegistry()
+	first := resolverTestLink("project.test::link.first")
+	first.To = "environment.test::bastion"
+	first.Provides = []string{"tunnel"}
+	second := resolverTestLink("project.test::link.second")
+	second.From = first.To
+	second.Requires = []string{"tunnel"}
+	registry.Links[first.CanonicalID] = first
+	registry.Links[second.CanonicalID] = second
+	registry.Routes["project.test::route.chain"] = &Route{
+		CanonicalID: "project.test::route.chain",
+		Steps:       []RouteStep{{Link: first.CanonicalID}, {Link: second.CanonicalID}},
+	}
+
+	result, err := registry.Resolve(ctx, "target", "shell", RuntimeContext{
+		CurrentEntity: first.From,
+		Vantage:       "office-lan",
+	}, providers, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "resolved" || result.Route == nil || len(result.Route.Steps) != 2 {
+		t.Fatalf("explicit Route should apply from its first Link: %#v", result)
+	}
+}
 
 func TestRouteEvidenceExpiryAndAggregation(t *testing.T) {
 	ctx := context.Background()
@@ -106,20 +173,30 @@ func TestRouteEvidenceExpiryAndAggregation(t *testing.T) {
 	defer store.Close()
 
 	const vantage = "office-lan"
+	runtime := RuntimeContext{CurrentEntity: "project.test::workstation", Vantage: vantage}
+	provider := &recordingProvider{}
+	providers := &Providers{values: map[string]Provider{provider.Name(): provider}}
+	registry := &Registry{Links: map[string]*Link{}}
+	for _, id := range []string{"link.non-expiring", "link.future", "link.expired", "link.failure", "link.missing"} {
+		registry.Links[id] = resolverTestLink(id)
+	}
 	now := time.Now().UTC()
 	observations := []Observation{
-		{Subject: "link.non-expiring", Vantage: vantage, Status: "success", ObservedAt: now},
-		{Subject: "link.future", Vantage: vantage, Status: "success", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
-		{Subject: "link.expired", Vantage: vantage, Status: "success", ObservedAt: now, ExpiresAt: now.Add(-time.Hour)},
-		{Subject: "link.failure", Vantage: vantage, Status: "failure", ObservedAt: now},
+		{Subject: "link.non-expiring", Status: "success", ObservedAt: now},
+		{Subject: "link.future", Status: "success", ObservedAt: now, ExpiresAt: now.Add(time.Hour)},
+		{Subject: "link.expired", Status: "success", ObservedAt: now, ExpiresAt: now.Add(-time.Hour)},
+		{Subject: "link.failure", Status: "failure", ObservedAt: now},
 	}
 	for _, observation := range observations {
+		prepared, err := registry.prepareLink(observation.Subject, runtime, providers)
+		if err != nil {
+			t.Fatal(err)
+		}
+		observation = applyObservationApplicability(observation, prepared.applicability)
 		if _, err := store.Append(ctx, observation); err != nil {
 			t.Fatal(err)
 		}
 	}
-
-	registry := &Registry{}
 	cases := []struct {
 		name   string
 		links  []string
@@ -140,7 +217,7 @@ func TestRouteEvidenceExpiryAndAggregation(t *testing.T) {
 			for _, linkID := range test.links {
 				route.Steps = append(route.Steps, RouteStep{Link: linkID})
 			}
-			evidence, err := registry.RouteEvidence(ctx, route, vantage, store)
+			evidence, err := registry.RouteEvidence(ctx, route, runtime, providers, store)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -164,7 +241,16 @@ func resolverTestRegistry() *Registry {
 		Manifest: Manifest{Scope: Scope{ID: "project.test", Kind: "project"}},
 		Bindings: map[string]string{"target": "environment.test::host"},
 		Entities: map[string]*Entity{
-			"environment.test::host": {CanonicalID: "environment.test::host"},
+			"environment.test::host": {
+				CanonicalID: "environment.test::host",
+				ScopeID:     "environment.test",
+				Kind:        "host",
+				Name:        "Target host",
+				Labels:      map[string]string{"role": "target"},
+				Documentation: []Documentation{{
+					Ref: "../docs/target.md", Title: "Target",
+				}},
+			},
 		},
 		Links:  map[string]*Link{},
 		Routes: map[string]*Route{},
@@ -178,11 +264,20 @@ func resolverTestLink(id string) *Link {
 		To:          "environment.test::host",
 		Provider:    "recording",
 		Provides:    []string{"shell"},
+		Documentation: []Documentation{{
+			Ref: "../docs/link.md", Title: "Link",
+		}},
 	}
 }
 
 func resolverTestRoute(id, linkID string) *Route {
-	return &Route{CanonicalID: id, Steps: []RouteStep{{Link: linkID}}}
+	return &Route{
+		CanonicalID: id,
+		Steps:       []RouteStep{{Link: linkID}},
+		Documentation: []Documentation{{
+			Ref: "../docs/route.md", Title: "Route",
+		}},
+	}
 }
 
 func workspaceTestPath(t *testing.T, elements ...string) string {

@@ -1,0 +1,15 @@
+api_version: locus/v0
+bindings:
+  link.prod-frp:
+    executable: "{{FRPC_EXECUTABLE_A}}"
+    provider_data:
+      config: "{{FRPC_CONFIG}}"
+      local_host: 127.0.0.1
+      local_port: {{PORT}}
+  link.prod-ssh:
+    executable: "{{SSH_EXECUTABLE_A}}"
+    provider_data:
+      host: 127.0.0.1
+      port: {{PORT}}
+      user: deploy
+      credential_ref: secret://ssh/customer-a-prod

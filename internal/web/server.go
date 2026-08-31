@@ -11,10 +11,11 @@ import (
 )
 
 type Config struct {
-	Registry string
-	From     string
-	Vantage  string
-	Address  string
+	Registry          string
+	From              string
+	Vantage           string
+	MechanismBindings string
+	Address           string
 }
 
 type Server struct {

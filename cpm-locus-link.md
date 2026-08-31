@@ -43,8 +43,8 @@
 - PostgreSQL：`production-db` Binding + database Entity facts + explicit Route + credential/docs + Observation，应能选择 native `psql` 或 existing PostgreSQL MCP binding；locus-link Core 不执行 SQL。
 - Gitea：`source/ci-worker/production` Bindings 与 Gitea→FRP/bastion→worker→deploy mechanism Route，应让陌生 Agent 获得结构化 capability/provider/evidence/provenance。
 - 是否新增 Provider binding 取决于某个 Link 是否存在独立 Validate/Describe/SafeProbe contract，而不是对象名称；MCP binding 只保存 reference。
-- 当前 `Link.from == current_entity` applicability 可能阻塞 worker/deploy 或 tunnel 语义；先由两个案例证明失败，再决定是否增加最小 runtime condition/output。
-- 下一步优先修复 Observation provenance/semantics validity，再建立薄 locus-link MCP contract/Adapter。
+- Resolve 与 Route Probe 只用第一条 Link 的 `from` 判断调用起点；后续步骤由显式 Route 顺序和 capability fold 约束，不要求每条 Link 都从 current Entity 出发。
+- 下一步优先收敛 transitive import/Source provenance，再建立薄 locus-link MCP contract/Adapter；PostgreSQL或 Gitea 只在现有 slice 无法证明缺失语义时引入。
 
 ## Verified Implementation Baseline
 
@@ -56,13 +56,13 @@
 - 已实现 FRP、SSH、Salt Provider：Validate、Render NativeHint、safe Probe；无通用 Execute。
 - FRP Probe 使用 `frpc verify` 和现有本地 endpoint；SSH Probe 使用 TCP 与 `ssh -G`；Salt Probe 只调用 `test.ping`。
 - Resolve 不启动 FRP、不建立 SSH session、不执行 Salt、不调用 Probe；Probe 只验证既有状态并追加 Link Observation。
-- Registry 装载会校验对象版本、identity 字符集、Environment 限制、documentation containment、Provider 注册及完整 Provider data；声明错误不进入 Probe 持久化。
+- Registry 装载会校验对象版本、identity 字符集、Environment 限制、documentation containment 和 Provider 注册；非空声明 `provider_data` 必须完整，空值可由 runtime mechanism binding 提供，effective Link 在 Resolve/Probe/Status 时统一校验。
 - Provider Probe 在 dial 或进程启动前重复执行 Validate；FRP、SSH、Salt Observation 分别记录具体测量 kind，外部进程失败不保存原始输出。
 - Observation 的零 `expires_at` 表示没有显式期限；只有非零且已过期的记录才派生为 stale。
-- 当前 Observation 只持久化 subject + vantage 等 v0 字段，缺少 declaration digest、Probe semantics version 与 context fingerprint；这是已确认的目标不变量缺口。
+- Observation 持久化 declaration/source/binding digest、Probe kind/version、vantage 与 relevant context fingerprint；Resolve、Status 和 Route evidence 统一使用完整 applicability query，旧 schema 行保留但因 provenance 为空而失效。
 - `validate`、`list`、`show` 是 declaration-only 路径，不解析 PATH、runtime 或 Observation state。
 - `LOCUS_STATE_PATH` 可将测试 Store 定向到工作区；生产默认使用 OS 本机 state 目录。
-- 当前需要 Runtime Context 的命令要求显式 `--from`；未传 `--vantage` 时退化为 host-specific vantage。该易用性需由真实使用再评估。
+- `context`、`resolve`、`probe`、`status` 统一要求显式 `--from`，并通过同一个 builder 解析 vantage 与 workstation-local `--mechanism-bindings`；未传 vantage 时退化为 host-specific value。
 
 ## End-to-End Contract
 
@@ -74,6 +74,7 @@
 - Alpha/Beta 使用不同 workstation canonical identity 和 vantage。
 - FRP→SSH Route 与 single-Link Salt Route 共用同一 Scope/Binding/Observation 机制。
 - 模拟设备状态为 `frp-up / ssh-up / salt-up`，helper executable 位于运行时 `temp/e2e-run/bin/`。
+- 两套 workstation-local FRP/SSH mechanism binding fixture 使用同一 Registry，concrete executable 不同但 canonical knowledge identity 不变。
 
 完整 E2E 已验证：
 
@@ -85,6 +86,8 @@
 - Salt NativeHint 精确为 `salt customer-a-prod-01 test.ping --out=json`。
 - Salt success → failure（退出码 4 且 stdout 保持 JSON）→ recovery 会依次改变 Route status 与 Resolve evidence。
 - Project Beta 在 `device-b` 下不会复用 Alpha/`office-lan` 的不适用 evidence，Resolve 保持 unknown。
+- 同一 Registry 的 binding A Probe success 不会被 binding B 复用；两边 Resolve 的 Entity、Binding、Route、capability 和 documentation 保持一致。
+- Observation 回归覆盖 declaration、binding、Probe version、vantage 变化导致失效，以及无关 CWD 变化不导致失效。
 - 同一 E2E 启动真实 `locus web` 子进程并复用 CLI fixture/Store，验证 Graph/Status/Knowledge/Resolve/Probe、failure/recovery、vantage 隔离、文档去重与 containment、Secret 边界及嵌入式 UI 入口。
 - 实际浏览器已验证 Graph、Status、Knowledge 三视图、Resolve、Probe、净化后的 Markdown 与窄屏无横向溢出；自动套件不依赖工作区外浏览器。
 

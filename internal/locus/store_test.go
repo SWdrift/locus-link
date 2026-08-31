@@ -2,6 +2,7 @@ package locus
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -78,5 +79,63 @@ func TestStoreRoundTripsEvidenceKindAndZeroExpiry(t *testing.T) {
 	}
 	if stored.Evidence["kind"] != evidenceKind {
 		t.Fatalf("Latest evidence kind = %#v, want %q", stored.Evidence["kind"], evidenceKind)
+	}
+}
+
+func TestStoreMigrationPreservesButInvalidatesLegacyObservations(t *testing.T) {
+	ctx := context.Background()
+	storePath := workspaceTestPath(t, "store-migration", "state.db")
+	if err := os.RemoveAll(filepath.Dir(storePath)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(storePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TABLE observations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		subject TEXT NOT NULL,
+		vantage TEXT NOT NULL,
+		status TEXT NOT NULL,
+		observed_at TEXT NOT NULL,
+		expires_at TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		evidence TEXT NOT NULL,
+		error TEXT NOT NULL
+	)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := db.Exec(`INSERT INTO observations(subject,vantage,status,observed_at,expires_at,provider,evidence,error) VALUES(?,?,?,?,?,?,?,?)`,
+		"project.test::link.legacy", "office-lan", "success", now, time.Time{}.Format(time.RFC3339Nano), "ssh", `{}`, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := OpenStore(storePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	legacy, err := store.Latest(ctx, "project.test::link.legacy", "office-lan")
+	if err != nil || legacy == nil {
+		t.Fatalf("legacy observation was not preserved: %#v, %v", legacy, err)
+	}
+	applicable, err := store.LatestApplicable(ctx, ObservationApplicability{
+		Subject: "project.test::link.legacy", Vantage: "office-lan",
+		DeclarationDigest: "sha256:new", SourceDigest: "sha256:new", BindingDigest: "sha256:new",
+		ProbeKind: "tcp-connect", ProbeSemanticsVersion: "1", ContextFingerprint: "sha256:new",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applicable != nil {
+		t.Fatalf("legacy observation without provenance remained applicable: %#v", applicable)
 	}
 }

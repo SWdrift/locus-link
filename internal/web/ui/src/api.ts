@@ -42,6 +42,7 @@ export interface Observation {
 export interface LinkEvidence { link_id: string; status: string; observation?: Observation }
 export interface RouteEvidence { status: string; links: LinkEvidence[] }
 export interface StatusView {
+  current_entity: string
   vantage: string
   summary: Record<string, number>
   links: LinkEvidence[]
@@ -52,10 +53,42 @@ export interface DocumentAssociation { object_id: string; object_type: string; r
 export interface DocumentView { id: string; scope_id: string; path: string; title: string; associations: DocumentAssociation[] }
 export interface DocumentContent extends DocumentView { format: 'markdown' | 'text'; body: string }
 
-export interface NativeHint { provider: string; executable: string; args: string[]; credential_refs?: string[] }
-export interface ResolvedStep { link_id: string; provider: string; native_hint: NativeHint; evidence: LinkEvidence }
-export interface ResolvedRoute { canonical_id: string; derived_target: string; derived_provides: string[]; evidence_status: string; steps: ResolvedStep[] }
-export interface ResolveResult { status: string; input_target: string; canonical_target: string; capability: string; route?: ResolvedRoute; candidates?: ResolvedRoute[] }
+export interface DocumentationReference { ref: string; title?: string }
+export interface NativeHint { executable: string; args: string[]; credential_refs?: string[] }
+export interface ResolvedBinding { role: string; target: string }
+export interface ResolvedEntity {
+  canonical_id: string
+  scope_id: string
+  kind: string
+  name: string
+  labels?: Record<string, string>
+  documentation?: DocumentationReference[]
+}
+export interface ResolvedStep {
+  link_id: string
+  provider: string
+  native_hint: NativeHint
+  documentation?: DocumentationReference[]
+  evidence: LinkEvidence
+}
+export interface ResolvedRoute {
+  canonical_id: string
+  derived_target: string
+  derived_provides: string[]
+  documentation?: DocumentationReference[]
+  evidence_status: string
+  steps: ResolvedStep[]
+}
+export interface ResolveResult {
+  status: string
+  input_target: string
+  canonical_target: string
+  target_entity: ResolvedEntity
+  binding?: ResolvedBinding
+  capability: string
+  route?: ResolvedRoute
+  candidates?: ResolvedRoute[]
+}
 export interface ProbeResult { input_ref: string; subject_type: string; subject_id: string; status: string; observations: Observation[] }
 export interface ValidationResult { valid: boolean; active_scope: string; entities: number; links: number; routes: number }
 
@@ -71,7 +104,10 @@ async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
 export const getContext = () => requestJSON<LocusContext>('/api/v0/context')
 export const getGraph = () => requestJSON<GraphView>('/api/v0/graph')
 export const getValidation = () => requestJSON<ValidationResult>('/api/v0/validate')
-export const getStatus = (vantage: string) => requestJSON<StatusView>(`/api/v0/status?vantage=${encodeURIComponent(vantage)}`)
+export const getStatus = (from: string, vantage: string) => {
+  const query = new URLSearchParams({ from, vantage })
+  return requestJSON<StatusView>(`/api/v0/status?${query}`)
+}
 export const getKnowledge = () => requestJSON<{ documents: DocumentView[] }>('/api/v0/knowledge')
 export const getDocument = (id: string) => requestJSON<DocumentContent>(`/api/v0/knowledge/${encodeURIComponent(id)}`)
 export const resolveRoute = (target: string, capability: string, from: string, vantage: string) => {

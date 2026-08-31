@@ -10,7 +10,7 @@ locus web [--registry <path>] [--from <entity>] [--vantage <name>] [--address <l
 
 - 默认地址为 `127.0.0.1:7070`；只接受 IPv4/IPv6 loopback listener。
 - 服务拒绝非本机 `Host` 和 cross-site fetch，返回限制脚本、对象、frame 与外连的 CSP。
-- `--from`、`--vantage` 只提供页面初始 context；每次 Resolve、Status 或 Probe 请求显式携带当前值。
+- `--from`、`--vantage` 和 `--mechanism-bindings` 提供页面初始 Situated Context；UI 的每次 Resolve、Status 或 Probe 请求显式携带 `from` 与 vantage，服务端统一应用启动时装载的本地 mechanism bindings。
 - UI 和 API 不返回 Provider `provider_data`、Secret 或环境凭据。
 
 ## 读取投影
@@ -19,7 +19,7 @@ locus web [--registry <path>] [--from <entity>] [--vantage <name>] [--address <l
 |---|---|
 | `GET /api/v0/context` | active Scope、imports、Bindings 和初始 runtime context |
 | `GET /api/v0/graph` | Scope、Binding、Entity、Link、Route 的确定性声明投影；不包含 Provider data |
-| `GET /api/v0/status?vantage=<name>` | 指定 vantage 的最新 Link evidence 与动态 Route evidence |
+| `GET /api/v0/status?from=<entity>&vantage=<name>` | 当前 Situated Context 下适用的最新 Link evidence 与动态 Route evidence |
 | `GET /api/v0/knowledge` | 经声明引用并去重的文档索引 |
 | `GET /api/v0/knowledge/{id}` | 文档元数据与正文；只读取所属 Scope 的 `docs/` 内文件 |
 | `GET /api/v0/validate` | 当前 Registry 的静态校验结果与对象计数 |
@@ -41,7 +41,7 @@ Probe 语义、Provider 安全边界和 Observation 写入规则与 CLI `probe` 
 ## UI 行为
 
 - **Graph**：查看声明图、选择 Route/Link、Resolve，并显式触发所选对象的 Probe。
-- **Status**：按 vantage 查看 Link 最新证据和每次读取时聚合的 Route 状态。
+- **Status**：按 current Entity 与 vantage 查看适用的 Link evidence 和每次读取时聚合的 Route 状态。
 - **Knowledge**：按声明 association 浏览 Scope 文档；Markdown 禁用内嵌 HTML并在渲染后净化。
 
 Probe 是唯一写 Observation 的 Web 操作。页面加载、Graph、Status、Knowledge、Validate 和 Resolve 均不得隐式 Probe 或写状态。

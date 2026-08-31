@@ -40,12 +40,13 @@ type probeRequest struct {
 }
 
 type apiHandler struct {
-	registry       *locus.Registry
-	providers      *locus.Providers
-	statePath      string
-	defaultFrom    string
-	defaultVantage string
-	context        contextResponse
+	registry              *locus.Registry
+	providers             *locus.Providers
+	statePath             string
+	defaultFrom           string
+	defaultVantage        string
+	mechanismBindingsPath string
+	context               contextResponse
 }
 
 func newHandler(config Config) (http.Handler, error) {
@@ -75,7 +76,7 @@ func newHandler(config Config) (http.Handler, error) {
 	sort.Slice(imports, func(i, j int) bool { return imports[i].Alias < imports[j].Alias })
 	api := &apiHandler{
 		registry: registry, providers: locus.NewProviders(), statePath: statePath,
-		defaultFrom: currentEntity, defaultVantage: vantage,
+		defaultFrom: currentEntity, defaultVantage: vantage, mechanismBindingsPath: config.MechanismBindings,
 		context: contextResponse{
 			ActiveScope: registry.Manifest.Scope, Imports: imports, Bindings: registry.Bindings,
 			Runtime: runtimeResponse{CurrentEntity: currentEntity, Vantage: vantage},
@@ -115,7 +116,7 @@ func (a *apiHandler) getGraph(response http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *apiHandler) getStatus(response http.ResponseWriter, request *http.Request) {
-	vantage, err := locus.ObservationVantage(firstNonEmpty(request.URL.Query().Get("vantage"), a.defaultVantage))
+	runtime, err := a.runtime(request.URL.Query().Get("from"), request.URL.Query().Get("vantage"))
 	if err != nil {
 		writeAPIError(response, http.StatusBadRequest, err)
 		return
@@ -126,7 +127,7 @@ func (a *apiHandler) getStatus(response http.ResponseWriter, request *http.Reque
 		return
 	}
 	defer store.Close()
-	result, err := a.registry.Status(request.Context(), vantage, store)
+	result, err := a.registry.Status(request.Context(), runtime, a.providers, store)
 	if err != nil {
 		writeAPIError(response, http.StatusInternalServerError, err)
 		return
@@ -166,7 +167,7 @@ func (a *apiHandler) getResolve(response http.ResponseWriter, request *http.Requ
 		writeAPIError(response, http.StatusBadRequest, errors.New("target and capability are required"))
 		return
 	}
-	runtime, err := locus.RequiredRuntime(a.registry, firstNonEmpty(query.Get("from"), a.defaultFrom), firstNonEmpty(query.Get("vantage"), a.defaultVantage))
+	runtime, err := a.runtime(query.Get("from"), query.Get("vantage"))
 	if err != nil {
 		writeAPIError(response, http.StatusBadRequest, err)
 		return
@@ -214,7 +215,7 @@ func (a *apiHandler) postProbe(response http.ResponseWriter, request *http.Reque
 		writeAPIError(response, http.StatusBadRequest, errors.New("timeout_ms must be between 1 and 60000"))
 		return
 	}
-	runtime, err := locus.RequiredRuntime(a.registry, firstNonEmpty(input.From, a.defaultFrom), firstNonEmpty(input.Vantage, a.defaultVantage))
+	runtime, err := a.runtime(input.From, input.Vantage)
 	if err != nil {
 		writeAPIError(response, http.StatusBadRequest, err)
 		return
@@ -238,6 +239,14 @@ func (a *apiHandler) postProbe(response http.ResponseWriter, request *http.Reque
 		return
 	}
 	writeJSON(response, http.StatusOK, result)
+}
+
+func (a *apiHandler) runtime(from, vantage string) (locus.RuntimeContext, error) {
+	return locus.BuildRuntime(a.registry, locus.RuntimeInput{
+		From:                  firstNonEmpty(from, a.defaultFrom),
+		Vantage:               firstNonEmpty(vantage, a.defaultVantage),
+		MechanismBindingsPath: a.mechanismBindingsPath,
+	})
 }
 
 func secureLocalHandler(next http.Handler) http.Handler {

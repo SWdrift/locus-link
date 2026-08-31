@@ -77,16 +77,17 @@ type Route struct {
 }
 
 type Registry struct {
-	Root     string
-	Manifest Manifest
-	Scopes   map[string]Manifest
-	Aliases  map[string]string
-	Bindings map[string]string
-	Entities map[string]*Entity
-	Links    map[string]*Link
-	Routes   map[string]*Route
-	local    map[string]map[string]string
-	sources  map[string]string
+	Root          string
+	Manifest      Manifest
+	Scopes        map[string]Manifest
+	Aliases       map[string]string
+	Bindings      map[string]string
+	Entities      map[string]*Entity
+	Links         map[string]*Link
+	Routes        map[string]*Route
+	local         map[string]map[string]string
+	sources       map[string]string
+	sourceDigests map[string]string
 }
 
 type rawType struct {
@@ -119,7 +120,7 @@ func LoadRegistry(root string) (*Registry, error) {
 	registry := &Registry{
 		Root: absolute, Scopes: map[string]Manifest{}, Aliases: map[string]string{}, Bindings: map[string]string{},
 		Entities: map[string]*Entity{}, Links: map[string]*Link{}, Routes: map[string]*Route{},
-		local: map[string]map[string]string{}, sources: map[string]string{},
+		local: map[string]map[string]string{}, sources: map[string]string{}, sourceDigests: map[string]string{},
 	}
 	manifest, err := readManifest(filepath.Join(absolute, "scope.yaml"))
 	if err != nil {
@@ -291,6 +292,7 @@ func (r *Registry) loadObject(path, scopeID string) error {
 		}
 		r.Entities[value.CanonicalID] = &value
 		r.sources[value.CanonicalID] = path
+		r.sourceDigests[value.CanonicalID] = digestBytes(data)
 	case "link":
 		var value Link
 		if err := decodeYAMLNode(path, &node, &value); err != nil {
@@ -302,6 +304,7 @@ func (r *Registry) loadObject(path, scopeID string) error {
 		}
 		r.Links[value.CanonicalID] = &value
 		r.sources[value.CanonicalID] = path
+		r.sourceDigests[value.CanonicalID] = digestBytes(data)
 	case "route":
 		var value Route
 		if err := decodeYAMLNode(path, &node, &value); err != nil {
@@ -313,6 +316,7 @@ func (r *Registry) loadObject(path, scopeID string) error {
 		}
 		r.Routes[value.CanonicalID] = &value
 		r.sources[value.CanonicalID] = path
+		r.sourceDigests[value.CanonicalID] = digestBytes(data)
 	default:
 		return fmt.Errorf("%s: unsupported type %q", path, header.Type)
 	}
@@ -429,7 +433,7 @@ func (r *Registry) Validate() []string {
 			issues = append(issues, link.CanonicalID+": provider is required")
 		} else if provider, ok := providers.Get(link.Provider); !ok {
 			issues = append(issues, fmt.Sprintf("%s: unsupported provider %s", link.CanonicalID, link.Provider))
-		} else {
+		} else if len(link.ProviderData) > 0 {
 			issues = append(issues, provider.Validate(link)...)
 		}
 	}

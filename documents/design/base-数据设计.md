@@ -155,6 +155,10 @@ Observation 的适用性与 Route evidence 语义由[基础系统设计的 Probe
 | status、时间、期限、evidence/error | sanitized measured result 与 Probe orchestration |
 
 这些信息必须在测量时一起形成，Store 不根据当前 Registry 或 Profile 反向补齐历史记录。记录追加后保持不可变；查询结果中的 latest、freshness、Observation overlay 和 Route evidence 均为读取时派生。
+适用记录必须同时匹配 canonical Link、vantage、declaration digest、Source content digest、effective mechanism binding digest、Probe kind/version 和 relevant context fingerprint；任一字段不同都不能作为当前 Evidence。Context fingerprint 只包含 Provider 明确声明会影响测量语义的字段，CWD 等无关字段不得导致失效。
+
+当前 SQLite 迁移为既有表追加上述 provenance columns。迁移前的历史行缺少完整 provenance，保留用于历史检查，但不会匹配新的 applicability query；不猜测或反向补齐旧记录。workstation-local mechanism binding 的 executable 与覆盖后的 `provider_data` 共同参与 binding digest，binding 文件路径本身不参与语义 identity。
+
 
 ## Documentation 与 MCP Resource
 

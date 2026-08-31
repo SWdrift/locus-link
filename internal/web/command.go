@@ -27,6 +27,7 @@ func Command(stdout io.Writer) *cobra.Command {
 	command.Flags().StringVar(&config.Registry, "registry", "", "registry path override")
 	command.Flags().StringVar(&config.From, "from", "", "default operational entity")
 	command.Flags().StringVar(&config.Vantage, "vantage", "", "default observation vantage")
+	command.Flags().StringVar(&config.MechanismBindings, "mechanism-bindings", "", "workstation-local mechanism bindings file")
 	command.Flags().StringVar(&config.Address, "address", "127.0.0.1:7070", "loopback listen address")
 	return command
 }

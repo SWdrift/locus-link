@@ -13,10 +13,12 @@ import (
 )
 
 type RuntimeContext struct {
-	CWD            string   `json:"cwd"`
-	CurrentEntity  string   `json:"current_entity"`
-	AvailableTools []string `json:"available_tools"`
-	Vantage        string   `json:"vantage"`
+	CWD                     string                      `json:"cwd"`
+	CurrentEntity           string                      `json:"current_entity"`
+	AvailableTools          []string                    `json:"available_tools"`
+	Vantage                 string                      `json:"vantage"`
+	MechanismBindings       map[string]MechanismBinding `json:"-"`
+	MechanismBindingsSource string                      `json:"mechanism_bindings_source,omitempty"`
 }
 
 type NativeHint struct {
@@ -24,10 +26,15 @@ type NativeHint struct {
 	Args           []string `json:"args"`
 	CredentialRefs []string `json:"credential_refs,omitempty"`
 }
+type ProbeSemantics struct {
+	Kind    string
+	Version string
+}
 
 type Provider interface {
 	Name() string
 	Executable() string
+	ProbeSemantics() ProbeSemantics
 	Validate(link *Link) []string
 	Render(link *Link, runtime RuntimeContext) (NativeHint, error)
 	Probe(ctx context.Context, link *Link, runtime RuntimeContext) Observation
@@ -67,6 +74,9 @@ type frpProvider struct{}
 
 func (frpProvider) Name() string       { return "frp-stcp" }
 func (frpProvider) Executable() string { return "frpc" }
+func (frpProvider) ProbeSemantics() ProbeSemantics {
+	return ProbeSemantics{Kind: "frpc-config-and-tcp-connect", Version: "1"}
+}
 func (frpProvider) Validate(link *Link) []string {
 	var issues []string
 	issues = append(issues, validateProviderString(link, "config")...)
@@ -74,22 +84,22 @@ func (frpProvider) Validate(link *Link) []string {
 	issues = append(issues, validateProviderPort(link, "local_port")...)
 	return issues
 }
-func (frpProvider) Render(link *Link, _ RuntimeContext) (NativeHint, error) {
+func (provider frpProvider) Render(link *Link, runtime RuntimeContext) (NativeHint, error) {
 	config, err := providerString(link, "config")
 	if err != nil {
 		return NativeHint{}, err
 	}
-	return NativeHint{Executable: "frpc", Args: []string{"-c", config}}, nil
+	return NativeHint{Executable: runtime.mechanismExecutable(link.CanonicalID, provider.Executable()), Args: []string{"-c", config}}, nil
 }
 func (provider frpProvider) Probe(ctx context.Context, link *Link, runtime RuntimeContext) Observation {
-	observation := newObservation(link, runtime, provider.Name(), "frpc-config-and-tcp-connect")
+	observation := newObservation(link, runtime, provider.Name(), provider.ProbeSemantics().Kind)
 	if issues := provider.Validate(link); len(issues) != 0 {
 		return finishObservation(observation, providerValidationError(issues))
 	}
 
 	config, err := providerString(link, "config")
 	if err == nil {
-		command := exec.CommandContext(ctx, "frpc", "verify", "-c", config)
+		command := exec.CommandContext(ctx, runtime.mechanismExecutable(link.CanonicalID, provider.Executable()), "verify", "-c", config)
 		if commandErr := command.Run(); commandErr != nil {
 			err = summarizeCommandFailure(ctx, "frpc verify", commandErr)
 		}
@@ -104,6 +114,9 @@ type sshProvider struct{}
 
 func (sshProvider) Name() string       { return "ssh" }
 func (sshProvider) Executable() string { return "ssh" }
+func (sshProvider) ProbeSemantics() ProbeSemantics {
+	return ProbeSemantics{Kind: "tcp-connect-and-ssh-config", Version: "1"}
+}
 func (sshProvider) Validate(link *Link) []string {
 	var issues []string
 	issues = append(issues, validateProviderString(link, "user")...)
@@ -116,7 +129,7 @@ func (sshProvider) Validate(link *Link) []string {
 	}
 	return issues
 }
-func (sshProvider) Render(link *Link, _ RuntimeContext) (NativeHint, error) {
+func (provider sshProvider) Render(link *Link, runtime RuntimeContext) (NativeHint, error) {
 	user, err := providerString(link, "user")
 	if err != nil {
 		return NativeHint{}, err
@@ -129,14 +142,14 @@ func (sshProvider) Render(link *Link, _ RuntimeContext) (NativeHint, error) {
 	if err != nil {
 		return NativeHint{}, err
 	}
-	hint := NativeHint{Executable: "ssh", Args: []string{"-p", strconv.Itoa(port), user + "@" + host}}
+	hint := NativeHint{Executable: runtime.mechanismExecutable(link.CanonicalID, provider.Executable()), Args: []string{"-p", strconv.Itoa(port), user + "@" + host}}
 	if credential, ok := link.ProviderData["credential_ref"].(string); ok && credential != "" {
 		hint.CredentialRefs = []string{credential}
 	}
 	return hint, nil
 }
 func (provider sshProvider) Probe(ctx context.Context, link *Link, runtime RuntimeContext) Observation {
-	observation := newObservation(link, runtime, provider.Name(), "tcp-connect-and-ssh-config")
+	observation := newObservation(link, runtime, provider.Name(), provider.ProbeSemantics().Kind)
 	if issues := provider.Validate(link); len(issues) != 0 {
 		return finishObservation(observation, providerValidationError(issues))
 	}
@@ -148,7 +161,7 @@ func (provider sshProvider) Probe(ctx context.Context, link *Link, runtime Runti
 			err = renderErr
 		} else {
 			args := append([]string{"-G"}, hint.Args...)
-			command := exec.CommandContext(ctx, "ssh", args...)
+			command := exec.CommandContext(ctx, hint.Executable, args...)
 			if commandErr := command.Run(); commandErr != nil {
 				err = summarizeCommandFailure(ctx, "ssh config probe", commandErr)
 			}
@@ -161,18 +174,21 @@ type saltProvider struct{}
 
 func (saltProvider) Name() string       { return "salt" }
 func (saltProvider) Executable() string { return "salt" }
+func (saltProvider) ProbeSemantics() ProbeSemantics {
+	return ProbeSemantics{Kind: "salt-test-ping", Version: "1"}
+}
 func (saltProvider) Validate(link *Link) []string {
 	return validateProviderString(link, "minion_id")
 }
-func (saltProvider) Render(link *Link, _ RuntimeContext) (NativeHint, error) {
+func (provider saltProvider) Render(link *Link, runtime RuntimeContext) (NativeHint, error) {
 	minionID, err := providerString(link, "minion_id")
 	if err != nil {
 		return NativeHint{}, err
 	}
-	return NativeHint{Executable: "salt", Args: []string{minionID, "test.ping", "--out=json"}}, nil
+	return NativeHint{Executable: runtime.mechanismExecutable(link.CanonicalID, provider.Executable()), Args: []string{minionID, "test.ping", "--out=json"}}, nil
 }
 func (provider saltProvider) Probe(ctx context.Context, link *Link, runtime RuntimeContext) Observation {
-	observation := newObservation(link, runtime, provider.Name(), "salt-test-ping")
+	observation := newObservation(link, runtime, provider.Name(), provider.ProbeSemantics().Kind)
 	if issues := provider.Validate(link); len(issues) != 0 {
 		return finishObservation(observation, providerValidationError(issues))
 	}

@@ -5,7 +5,7 @@ import type { LocusContext } from '../api'
 import { getStatus } from '../api'
 
 const props = defineProps<{ context?: LocusContext; from: string; vantage: string }>()
-const status = useQuery({ queryKey: computed(() => ['status', props.vantage]), queryFn: () => getStatus(props.vantage), enabled: computed(() => Boolean(props.vantage)) })
+const status = useQuery({ queryKey: computed(() => ['status', props.from, props.vantage]), queryFn: () => getStatus(props.from, props.vantage), enabled: computed(() => Boolean(props.from && props.vantage)) })
 const order = ['success', 'failure', 'stale', 'unknown']
 </script>
 

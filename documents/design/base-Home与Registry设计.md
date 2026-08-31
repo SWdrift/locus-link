@@ -143,7 +143,7 @@ actor: workstation.dev-a
 vantage: office-lan
 ```
 
-Profile 不作为第二套 import 系统，也不能任意注入 Entity、Binding、Link 或 Route。Project 必需的 Environment dependency 必须由显式 Scope import 声明，不能依赖某台机器恰好选中的 Profile。机器专有且需要持久审阅的声明应放入独立 Scope；真正调用时才成立的局部条件进入严格受限的 Situated Context。如何表达此类 local-only facts 仍为 **deferred / unresolved**，在 E2E 证明需要前不新增 schema。
+Profile 不作为第二套 import 系统，也不能任意注入 Entity、Binding、Link 或 Route。Project 必需的 Environment dependency 必须由显式 Scope import 声明，不能依赖某台机器恰好选中的 Profile。机器专有且需要持久审阅的声明应放入独立 Scope；具体 executable、配置路径或 localhost endpoint 等 workstation-local mechanism binding 作为严格受限的 Situated Context 输入，按 Link identity 覆盖 concrete Provider binding，不进入 Registry 或 Graph。Profile 将来只能为这类输入提供默认选择，不能改变其数据归属。
 
 ## active Scope 发现
 

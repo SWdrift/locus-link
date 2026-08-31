@@ -62,7 +62,7 @@ Inspection 用于查看和排错，不是 Resolve 的前置步骤。Authoring �
 ## Resolve
 
 ```text
-locus resolve <target> --capability <name> [--from <entity>] [--vantage <name>]
+locus resolve <target> --capability <name> [--from <entity>] [--vantage <name>] [--mechanism-bindings <path>]
 ```
 
 Target 可以是 Project Binding，也可以是可解析的 Entity reference。结果保留输入名称及其 canonical Entity。
@@ -88,7 +88,7 @@ Resolve 不调用 Probe，也不写 Observation。
 ## Probe
 
 ```text
-locus probe <link-or-route-id> [--from <entity>] [--vantage <name>] [--timeout <duration>]
+locus probe <link-or-route-id> [--from <entity>] [--vantage <name>] [--mechanism-bindings <path>] [--timeout <duration>]
 ```
 
 Link Probe 调用对应 Provider 的 Safe Probe，并追加一条 canonical Link Observation。
@@ -126,15 +126,15 @@ object: <canonical Entity declaration>
 
 ### `status`
 
-`status <link-id>` 读取指定 vantage 下最新的 Link Observation。`status <route-id>` 从 constituent Link observations 动态聚合 Route evidence。
+`status <link-id>` 读取当前 Situated Context 下最新的适用 Link Observation。`status <route-id>` 从 constituent Links 的适用 Observation 动态聚合 Route evidence。Status 与 Resolve、Probe 使用相同的 `--from`、`--vantage` 和本地 mechanism bindings。
 
 ### `web`
 
-`web` 启动本机 HTTP 服务并提供嵌入式 WebUI。默认使用当前 Registry discovery，可通过 `--registry` 覆盖；`--from` 和 `--vantage` 设置页面的初始 Runtime Context。首版只允许 loopback `--address`，不提供远程服务、认证或远程 Observation Store。
+`web` 启动本机 HTTP 服务并提供嵌入式 WebUI。默认使用当前 Registry discovery，可通过 `--registry` 覆盖；`--from`、`--vantage` 和 `--mechanism-bindings` 设置页面的初始 Runtime Context。首版只允许 loopback `--address`，不提供远程服务、认证或远程 Observation Store。
 
 ### `init` 与 `validate`
 
-`init` 创建最小本地 Registry，不初始化 Git。`validate` 校验 Scope、imports、bindings、声明引用、Route 和 Provider data，不连接 endpoint。
+`init` 创建最小本地 Registry，不初始化 Git。`validate` 校验 Scope、imports、bindings、声明引用、Route、Provider 注册，以及 Registry 中显式提供的完整 Provider data，不连接 endpoint。仅由本地 mechanism bindings 提供的 concrete data 在 Resolve、Probe 或 Status 装配现场时校验。
 
 ## Registry discovery 与 Runtime Context
 
@@ -146,14 +146,29 @@ object: <canonical Entity declaration>
 
 `--registry` 只用于 override、automation、tests 和特殊多 Registry 场景。
 
-- `--from` 表示当前 operational Entity，用于判断 Route 是否适用于调用位置；
+- `--from` 表示当前 operational Entity；Resolve 与 Route Probe 用它匹配第一条 Link 的 `from`，后续步骤由显式 Route 顺序和 capability fold 约束；
 - `--vantage` 表示 Observation 成立的网络位置，用于隔离 evidence。
+- `--mechanism-bindings` 指向 workstation-local YAML；它只覆盖 Link 的 concrete executable 和 `provider_data`，不改变 Link、Route、Binding 或 capability identity。
+
+本地 mechanism bindings 文件使用严格 `locus/v0` YAML：
+
+```yaml
+api_version: locus/v0
+bindings:
+  link.prod-ssh:
+    executable: C:/Tools/ssh.exe
+    provider_data:
+      host: 127.0.0.1
+      port: 22022
+```
+
+binding key 必须解析为当前 Declared View 中的 Link；文件拒绝未知字段、重复 key、多 document、非 Link 引用和空 binding。`provider_data` 按字段覆盖声明中的稳定默认值，`executable` 覆盖 Provider 默认 executable。该文件属于 Situated Context 输入，不进入 Registry、Graph 或 canonical identity。
 
 当前契约：
 
-- `context`、`resolve`、`probe` 要求 `--from`；
+- `context`、`resolve`、`probe`、`status` 要求 `--from`；
 - 未传 `--vantage` 时使用 host-specific fallback；
-- `status` 只读取 evidence，因此只需要 `--vantage`。
+- Resolve、Probe 与 Status 通过同一个 Situated Context builder 解析 `from`、vantage 和 mechanism bindings。
 
 ## 参数
 
@@ -165,11 +180,11 @@ object: <canonical Entity declaration>
 | `validate` | `--registry` |
 | `list` | `--registry` |
 | `show` | `--registry` |
-| `context` | `--registry --from --vantage` |
-| `resolve` | `--registry --from --vantage --capability` |
-| `probe` | `--registry --from --vantage --timeout` |
-| `status` | `--registry --vantage` |
-| `web` | `--registry --from --vantage --address` |
+| `context` | `--registry --from --vantage --mechanism-bindings` |
+| `resolve` | `--registry --from --vantage --mechanism-bindings --capability` |
+| `probe` | `--registry --from --vantage --mechanism-bindings --timeout` |
+| `status` | `--registry --from --vantage --mechanism-bindings` |
+| `web` | `--registry --from --vantage --mechanism-bindings --address` |
 
 无意义的 flag 作为 unknown flag 拒绝，不能静默忽略。
 

@@ -1,9 +1,6 @@
 package locus
 
-import (
-	"errors"
-	"os"
-)
+import "os"
 
 func LoadActiveRegistry(root string) (*Registry, error) {
 	if root == "" {
@@ -28,19 +25,4 @@ func ObservationVantage(value string) (string, error) {
 		return "", err
 	}
 	return "host:" + host, nil
-}
-
-func RequiredRuntime(registry *Registry, from, vantage string) (RuntimeContext, error) {
-	resolvedVantage, err := ObservationVantage(vantage)
-	if err != nil {
-		return RuntimeContext{}, err
-	}
-	if from == "" {
-		return RuntimeContext{}, errors.New("--from is required for this command")
-	}
-	currentEntity, err := registry.ResolveEntity(from)
-	if err != nil {
-		return RuntimeContext{}, err
-	}
-	return RuntimeContext{CurrentEntity: currentEntity, Vantage: resolvedVantage}, nil
 }
