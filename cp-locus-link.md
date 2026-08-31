@@ -34,7 +34,7 @@ locus-link 控制面覆盖 concrete environment knowledge 与 native/MCP mechani
 - 测试不得依赖本机安装的 FRP、SSH、Salt、PostgreSQL、Gitea 服务或用户凭据；外部行为使用工作区内确定性 helper。
 - 可审阅的 E2E 声明和模拟设备状态放在 `test/e2e/case/`；物化副本放在 `temp/e2e-run/`。
 - 新运行可以确定性替换 `temp/e2e-run/`，测试结束不得清理它。
-- 行为改动以 `go test ./...` 及 `scripts/test-e2e.ps1` 的完整闭环通过为完成条件。
+- 行为改动以 `scripts/verify.ps1` 的完整闭环通过为完成条件；聚焦 E2E 诊断时使用 `scripts/test-e2e.ps1`。
 
 ### 产品与模型
 

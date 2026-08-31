@@ -64,10 +64,12 @@ Registry 使用 YAML 声明 Scope、Import、Binding、Entity、Link 和人工�
 PowerShell：
 
 ```powershell
-New-Item -ItemType Directory -Force temp/bin | Out-Null
-go build -o temp/bin/locus.exe ./cmd/locus
+./scripts/build.ps1
 ./scripts/test-e2e.ps1
+./scripts/verify.ps1
 ```
+
+`build.ps1` 将 CLI 构建到 `temp/bin/locus.exe`；`test-e2e.ps1` 只运行 workspace E2E；`verify.ps1` 依次运行完整 Go 测试（含 E2E）、Web UI 构建和 Markdown 链接检查。脚本使用的 cache 和测试状态均保留在仓库 `temp/` 下。
 
 POSIX shell：
 
