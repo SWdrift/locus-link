@@ -1,69 +1,67 @@
 <script setup lang="ts">
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import dagre from '@dagrejs/dagre'
+import { ElAlert } from 'element-plus'
 import { computed, ref, watch } from 'vue'
-import { VueFlow, type Edge, type Node } from '@vue-flow/core'
-import '@vue-flow/core/dist/style.css'
-import '@vue-flow/core/dist/theme-default.css'
-import type { GraphView, LocusContext } from '../api'
-import { getGraph, getStatus, probe, resolveRoute } from '../api'
+import { useI18n } from 'vue-i18n'
+import { getGraph, probe, resolveRoute } from '../api'
+import AsyncState from '../components/AsyncState.vue'
+import GraphCanvas from '../features/graph/GraphCanvas.vue'
+import GraphInspector from '../features/graph/GraphInspector.vue'
+import { layoutGraph } from '../features/graph/graph-layout'
+import type { GraphLayout } from '../features/graph/graph-layout'
+import { useOperationalContext } from '../operational-context'
+import { useStatusQuery } from '../queries'
+import '../features/graph/graph.css'
 
-const props = defineProps<{ context?: LocusContext; from: string; vantage: string }>()
+const { t } = useI18n()
+const context = useOperationalContext()
 const graph = useQuery({ queryKey: ['graph'], queryFn: getGraph })
-const status = useQuery({ queryKey: computed(() => ['status', props.from, props.vantage]), queryFn: () => getStatus(props.from, props.vantage), enabled: computed(() => Boolean(props.from && props.vantage)) })
+const status = useStatusQuery()
 const queryClient = useQueryClient()
 const selectedRoute = ref('')
 const selectedLink = ref('')
 const target = ref('')
 const capability = ref('shell')
-watch(() => graph.data.value, (value) => {
-  if (!value) return
-  if (!selectedRoute.value && value.routes.length) selectedRoute.value = value.routes[0].canonical_id
-  if (!target.value) target.value = value.bindings[0]?.role ?? value.entities[0]?.canonical_id ?? ''
-}, { immediate: true })
+const layout = ref<GraphLayout>()
+const layoutPending = ref(false)
+const layoutError = ref<Error | null>(null)
+const layoutRevision = ref(0)
+let layoutRequest = 0
 
-const linkStatus = computed(() => new Map((status.data.value?.links ?? []).map(item => [item.link_id, item.status])))
-const activeRoute = computed(() => graph.data.value?.routes.find(route => route.canonical_id === selectedRoute.value))
-const activeSteps = computed(() => new Set(activeRoute.value?.steps ?? []))
-
-function layout(value: GraphView): { nodes: Node[]; edges: Edge[] } {
-  const model = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}))
-  model.setGraph({ rankdir: 'LR', ranksep: 110, nodesep: 70, marginx: 45, marginy: 45 })
-  for (const entity of value.entities) model.setNode(entity.canonical_id, { width: 190, height: 78 })
-  for (const link of value.links) model.setEdge(link.from, link.to)
-  dagre.layout(model)
-  const nodes: Node[] = value.entities.map(entity => {
-    const point = model.node(entity.canonical_id)
-    return {
-      id: entity.canonical_id,
-      position: { x: point.x - 95, y: point.y - 39 },
-      data: { label: entity.name, kind: entity.kind, scope: entity.scope_id, docs: entity.documentation_ids?.length ?? 0 },
-      type: 'default',
-    }
-  })
-  const edges: Edge[] = value.links.map(link => {
-    const state = linkStatus.value.get(link.canonical_id) ?? 'unknown'
-    const active = activeSteps.value.has(link.canonical_id)
-    const colors: Record<string, string> = { success: '#59d596', failure: '#f47b73', stale: '#e7b45f', unknown: '#63748a' }
-    return {
-      id: link.canonical_id,
-      source: link.from,
-      target: link.to,
-      label: link.provider,
-      animated: active,
-      style: { stroke: active ? '#79aef3' : colors[state], strokeWidth: active ? 3 : 1.7 },
-      labelStyle: { fill: '#9eabba', fontSize: 11 },
-      data: link,
-    }
-  })
-  return { nodes, edges }
+async function calculateLayout() {
+  const value = graph.data.value
+  if (!value || !value.entities.length) return
+  const request = ++layoutRequest
+  layoutPending.value = true
+  layoutError.value = null
+  try {
+    const result = await layoutGraph(value)
+    if (request !== layoutRequest) return
+    layout.value = result
+    layoutRevision.value += 1
+  } catch (error) {
+    if (request === layoutRequest) layoutError.value = error instanceof Error ? error : new Error(String(error))
+  } finally {
+    if (request === layoutRequest) layoutPending.value = false
+  }
 }
 
-const flow = computed(() => graph.data.value ? layout(graph.data.value) : { nodes: [], edges: [] })
-const selectedLinkView = computed(() => graph.data.value?.links.find(link => link.canonical_id === selectedLink.value))
-const resolveMutation = useMutation({ mutationFn: () => resolveRoute(target.value, capability.value, props.from, props.vantage) })
+watch(() => graph.data.value, value => {
+  if (!value) return
+  if (!value.routes.some(route => route.canonical_id === selectedRoute.value)) selectedRoute.value = value.routes[0]?.canonical_id ?? ''
+  if (!value.links.some(link => link.canonical_id === selectedLink.value)) selectedLink.value = ''
+  if (!target.value) target.value = value.bindings[0]?.role ?? value.entities[0]?.canonical_id ?? ''
+  void calculateLayout()
+}, { immediate: true })
+
+const activeRoute = computed(() => graph.data.value?.routes.find(route => route.canonical_id === selectedRoute.value))
+const activeSteps = computed(() => new Set(activeRoute.value?.steps ?? []))
+const linkStatus = computed(() => new Map(status.data.value?.links.map(item => [item.link_id, item.status]) ?? []))
+const empty = computed(() => Boolean(graph.data.value && !graph.data.value.entities.length))
+const operationalReady = computed(() => Boolean(context.from && context.vantage))
+const resolveMutation = useMutation({ mutationFn: () => resolveRoute(target.value, capability.value, context.from, context.vantage) })
 const probeMutation = useMutation({
-  mutationFn: (subject: string) => probe(subject, props.from, props.vantage),
+  mutationFn: (subject: string) => probe(subject, context.from, context.vantage),
   onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['status'] }) },
 })
 </script>
@@ -71,53 +69,39 @@ const probeMutation = useMutation({
 <template>
   <section class="graph-page">
     <div class="graph-toolbar">
-      <div><span class="eyebrow">Declared view</span><h2>Operational graph</h2></div>
-      <div class="summary-pills">
-        <span>{{ graph.data.value?.entities.length ?? 0 }} entities</span>
-        <span>{{ graph.data.value?.links.length ?? 0 }} links</span>
-        <span>{{ graph.data.value?.routes.length ?? 0 }} routes</span>
+      <div><span class="eyebrow">{{ t('graph.eyebrow') }}</span><h2>{{ t('graph.title') }}</h2></div>
+      <div class="summary-pills" aria-live="polite">
+        <span>{{ graph.data.value?.entities.length ?? 0 }} {{ t('graph.entities') }}</span>
+        <span>{{ graph.data.value?.links.length ?? 0 }} {{ t('graph.links') }}</span>
+        <span>{{ graph.data.value?.routes.length ?? 0 }} {{ t('graph.routes') }}</span>
       </div>
     </div>
 
-    <div v-if="graph.isError.value" class="error-panel">{{ graph.error.value?.message }}</div>
-    <div v-else class="graph-workspace">
-      <div class="flow-panel">
-        <VueFlow :nodes="flow.nodes" :edges="flow.edges" :min-zoom="0.3" :max-zoom="1.8" fit-view-on-init @edge-click="selectedLink = $event.edge.id">
-          <template #node-default="{ data }">
-            <div class="entity-node">
-              <span>{{ data.kind }}</span><strong>{{ data.label }}</strong><small>{{ data.scope }}</small>
-              <i v-if="data.docs">{{ data.docs }} doc</i>
-            </div>
-          </template>
-        </VueFlow>
+    <AsyncState :loading="graph.isPending.value" :error="graph.error.value" :empty="empty" :empty-text="t('graph.empty')">
+      <div v-if="layoutPending" class="async-state" role="status">{{ t('graph.layout') }}</div>
+      <ElAlert v-else-if="layoutError" type="error" :closable="false" :title="t('common.error')" :description="layoutError.message" />
+      <div v-else-if="layout && graph.data.value" class="graph-workspace">
+        <GraphCanvas :key="layout.fingerprint + layoutRevision" :layout="layout" :link-status="linkStatus" :active-steps="activeSteps" :selected-link="selectedLink" @select-link="selectedLink = $event" />
+        <GraphInspector
+          v-model:selected-route="selectedRoute"
+          v-model:selected-link="selectedLink"
+          v-model:target="target"
+          v-model:capability="capability"
+          :graph="graph.data.value"
+          :status="status.data.value"
+          :operational-ready="operationalReady"
+          :probing="probeMutation.isPending.value"
+          :resolving="resolveMutation.isPending.value"
+          :probe-result="probeMutation.data.value"
+          :resolve-result="resolveMutation.data.value"
+          :probe-error="probeMutation.error.value"
+          :resolve-error="resolveMutation.error.value"
+          :status-error="status.error.value"
+          @probe="probeMutation.mutate"
+          @resolve="resolveMutation.mutate()"
+          @relayout="calculateLayout"
+        />
       </div>
-
-      <aside class="inspector-panel">
-        <section>
-          <span class="eyebrow">Routes</span>
-          <button v-for="route in graph.data.value?.routes" :key="route.canonical_id" class="route-choice" :class="{ active: selectedRoute === route.canonical_id }" @click="selectedRoute = route.canonical_id">
-            <strong>{{ route.canonical_id.split('::').at(-1) }}</strong><small>{{ route.steps.length }} steps · {{ status.data.value?.routes.find(item => item.route_id === route.canonical_id)?.evidence.status ?? 'unknown' }}</small>
-          </button>
-          <button v-if="activeRoute" class="probe-button" :disabled="probeMutation.isPending.value || !from" @click="probeMutation.mutate(activeRoute.canonical_id)">Probe route</button>
-        </section>
-
-        <section v-if="selectedLinkView" class="selected-detail">
-          <span class="eyebrow">Selected link</span><strong>{{ selectedLinkView.canonical_id }}</strong>
-          <small>{{ selectedLinkView.provider }} · {{ linkStatus.get(selectedLinkView.canonical_id) ?? 'unknown' }}</small>
-          <button class="probe-button" :disabled="probeMutation.isPending.value || !from" @click="probeMutation.mutate(selectedLinkView.canonical_id)">Probe link</button>
-        </section>
-
-        <section class="resolve-box">
-          <span class="eyebrow">Resolve</span>
-          <label>Target<input v-model="target" /></label>
-          <label>Capability<input v-model="capability" /></label>
-          <button :disabled="resolveMutation.isPending.value || !from || !target || !capability" @click="resolveMutation.mutate()">Resolve route</button>
-          <div v-if="resolveMutation.data.value" class="result-card"><strong>{{ resolveMutation.data.value.status }}</strong><small>{{ resolveMutation.data.value.route?.canonical_id ?? `${resolveMutation.data.value.candidates?.length ?? 0} candidates` }}</small></div>
-          <div v-if="resolveMutation.isError.value" class="inline-error">{{ resolveMutation.error.value?.message }}</div>
-        </section>
-        <div v-if="probeMutation.data.value" class="result-card"><strong>Probe {{ probeMutation.data.value.status }}</strong><small>{{ probeMutation.data.value.observations.length }} observations written</small></div>
-        <div v-if="probeMutation.isError.value" class="inline-error">{{ probeMutation.error.value?.message }}</div>
-      </aside>
-    </div>
+    </AsyncState>
   </section>
 </template>

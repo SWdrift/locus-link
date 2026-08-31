@@ -2,4 +2,4 @@ api_version: locus/v0
 type: entity
 id: frps.primary
 kind: service
-name: FRP Server
+name: FRP 服务端

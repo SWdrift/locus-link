@@ -2,7 +2,7 @@ api_version: locus/v0
 type: entity
 id: host.prod-01
 kind: host
-name: Production Host
+name: 生产主机
 documentation:
   - ref: ../docs/production-host.md
-    title: Production host
+    title: 生产主机

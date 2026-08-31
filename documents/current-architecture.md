@@ -162,7 +162,7 @@ stateDiagram-v2
 | `resolve <target> --capability <name>` | 按当前规则筛选显式 Route 并附加既有证据 |
 | `probe <link-or-route-id>` | 执行 safe probe 并追加 Observation |
 | `status [link-or-route-id]` | 查看最新 Link/Route evidence 或按状态汇总 |
-| `web` | 装载 Registry 与本机 Store，启动 loopback HTTP server；Vue Graph/Status/Knowledge 提供声明图、证据、文档、Resolve 与显式 safe Probe |
+| `web` | 装载 Registry 与本机 Store，启动 loopback HTTP server；Vue Graph/Status/Knowledge 提供声明图、证据、文档、Resolve 与显式 safe Probe，并提供默认中文/英文切换、system/light/dark 主题及 ELK 异步分层图布局 |
 
 `context`、`resolve`、`probe`、`status` 需要 `--from`；`resolve` 还需要 `--capability`。四个命令都接受 `--vantage` 和 `--mechanism-bindings`，并复用同一个 Runtime Context builder。`web` 的同名 flags 是初始页面上下文；`web` 只允许 loopback `--address`。各命令可用 `--registry` 覆盖发现结果。
 
@@ -184,7 +184,7 @@ E2E 已覆盖 `init`、严格命令参数、Registry 向上发现、validate、c
 
 同一 Registry 的 dual-workstation slice 证明两套 local binding 得到相同 canonical target、Binding、Link/Route identity、capability 与 documentation，但 NativeHint executable 可以不同；A binding 的 Probe success 在 B binding 下保持 `unknown`。
 
-同一 E2E 还启动真实 `locus web` 子进程，复用上述 Registry、helper 与 Store，覆盖 Context、Graph、Status、Knowledge、Resolve、Probe failure/recovery、vantage 隔离、文档去重/路径边界、Provider data/Secret 不泄漏和嵌入式 UI 入口。浏览器已对 Graph、Status、Knowledge、Resolve、Probe 及窄屏布局完成实际交互验证。
+同一 E2E 还启动真实 `locus web` 子进程，复用上述 Registry、helper 与 Store，覆盖 Context、Graph、Status、Knowledge、Resolve、Probe failure/recovery、vantage 隔离、文档去重/路径边界、Provider data/Secret 不泄漏和嵌入式 UI 入口。实际浏览器已验证 Graph、Status、Knowledge、Resolve、Probe、中英文与主题切换，以及 `360px`、`768px`、`1280px`、`1440px` 下无页面级横向溢出；手机表格只在自身容器内滚动。
 
 ## 8. 公共契约符合度
 

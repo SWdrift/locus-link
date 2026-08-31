@@ -2,4 +2,4 @@ api_version: locus/v0
 type: entity
 id: {{WORKSTATION}}
 kind: workstation
-name: Simulated Workstation
+name: 模拟工作站

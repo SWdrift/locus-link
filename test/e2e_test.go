@@ -139,7 +139,7 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	assertStringAt(t, before, "binding", "role", "production-host")
 	assertStringAt(t, before, "binding", "target", "environment.customer-a::host.prod-01")
 	assertStringAt(t, before, "target_entity", "canonical_id", "environment.customer-a::host.prod-01")
-	assertStringAt(t, before, "target_entity", "name", "Production Host")
+	assertStringAt(t, before, "target_entity", "name", "生产主机")
 	assertDocumentationRef(t, mustObjectAt(t, before, "target_entity"), "../docs/production-host.md")
 	assertStringAt(t, before, "route", "derived_target", "environment.customer-a::host.prod-01")
 	assertStringAt(t, before, "route", "evidence_status", "unknown")
@@ -156,7 +156,7 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected resolved SSH step object, got %#v", steps[1])
 	}
-	assertDocumentationRef(t, sshStep, "../docs/production-access.md#verification")
+	assertDocumentationRef(t, sshStep, "../docs/production-access.md#验证")
 	assertObservationCount(t, statePath, 0)
 	assertProbeInvocations(t, probeLog)
 
@@ -311,8 +311,8 @@ func assertWebEndToEnd(t *testing.T, executable, project string, env []string, d
 	documentID := assertKnowledgeIndex(t, knowledge["documents"])
 	document, documentBody := webJSON(t, webClient, http.MethodGet, webBase+"/api/v0/knowledge/"+documentID, "", http.StatusOK)
 	assertStringAt(t, document, "format", "markdown")
-	if !strings.Contains(string(documentBody), "The shell route uses the existing FRP endpoint") {
-		t.Fatalf("project documentation body missing: %s", documentBody)
+	if !strings.Contains(string(documentBody), "Shell Route 在执行 SSH safe Probe 前复用现有 FRP endpoint") {
+		t.Fatalf("项目文档正文缺失: %s", documentBody)
 	}
 	webJSON(t, webClient, http.MethodGet, webBase+"/api/v0/knowledge/not-a-document-path", "", http.StatusNotFound)
 
@@ -435,7 +435,7 @@ func assertKnowledgeIndex(t *testing.T, value any) string {
 		if filepath.IsAbs(path) || strings.Contains(filepath.ToSlash(path), "../") {
 			t.Fatalf("document path escaped Scope docs: %#v", document)
 		}
-		if document["title"] == "Production access" {
+		if document["title"] == "生产访问" {
 			associations, ok := document["associations"].([]any)
 			if !ok || len(associations) != 2 {
 				t.Fatalf("project document was not deduplicated: %#v", document)
@@ -447,7 +447,7 @@ func assertKnowledgeIndex(t *testing.T, value any) string {
 			return id
 		}
 	}
-	t.Fatalf("Production access document missing: %#v", value)
+	t.Fatalf("生产访问文档缺失: %#v", value)
 	return ""
 }
 

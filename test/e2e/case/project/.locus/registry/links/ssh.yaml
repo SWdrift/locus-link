@@ -7,5 +7,5 @@ provider: ssh
 requires: [tcp-forward.ssh]
 provides: [shell, exec]
 documentation:
-  - ref: ../docs/production-access.md#verification
-    title: Production access
+  - ref: ../docs/production-access.md#验证
+    title: 生产访问

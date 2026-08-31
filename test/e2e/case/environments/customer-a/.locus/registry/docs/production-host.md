@@ -1,7 +1,7 @@
-# Production host
+# 生产主机
 
-`host.prod-01` is the canonical production target shared by imported projects.
+`host.prod-01` 是由多个导入项目共享的规范生产目标。
 
-## Operational boundary
+## 操作边界
 
-Use declared Links and Provider-native context. Credentials remain in the configured external secret mechanism.
+使用声明的 Link 和 Provider 原生上下文；凭据始终留在已配置的外部 Secret 机制中。

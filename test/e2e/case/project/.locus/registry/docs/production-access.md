@@ -1,7 +1,7 @@
-# Production access
+# 生产访问
 
-The shell route uses the existing FRP endpoint before the SSH safe probe.
+Shell Route 在执行 SSH safe Probe 前复用现有 FRP endpoint。
 
-## Verification
+## 验证
 
-Resolve first, probe only when evidence needs refresh, then resolve again to inspect the updated evidence.
+先 Resolve；仅在 evidence 需要刷新时 Probe；然后再次 Resolve，检查更新后的 evidence。

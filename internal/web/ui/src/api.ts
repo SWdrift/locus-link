@@ -1,3 +1,5 @@
+export type EvidenceStatus = 'success' | 'failure' | 'stale' | 'unknown'
+
 export interface Scope { id: string; kind: string }
 export interface ImportRef { alias: string; scope_id: string }
 export interface RuntimeContext { current_entity?: string; vantage: string }
@@ -32,19 +34,19 @@ export interface GraphView { scopes: Scope[]; bindings: { role: string; target: 
 export interface Observation {
   subject: string
   vantage: string
-  status: string
+  status: EvidenceStatus
   observed_at: string
   expires_at: string
   provider: string
   evidence?: Record<string, unknown>
   error?: string
 }
-export interface LinkEvidence { link_id: string; status: string; observation?: Observation }
-export interface RouteEvidence { status: string; links: LinkEvidence[] }
+export interface LinkEvidence { link_id: string; status: EvidenceStatus; observation?: Observation }
+export interface RouteEvidence { status: EvidenceStatus; links: LinkEvidence[] }
 export interface StatusView {
   current_entity: string
   vantage: string
-  summary: Record<string, number>
+  summary: Record<EvidenceStatus, number>
   links: LinkEvidence[]
   routes: { route_id: string; evidence: RouteEvidence }[]
 }
@@ -89,7 +91,7 @@ export interface ResolveResult {
   route?: ResolvedRoute
   candidates?: ResolvedRoute[]
 }
-export interface ProbeResult { input_ref: string; subject_type: string; subject_id: string; status: string; observations: Observation[] }
+export interface ProbeResult { input_ref: string; subject_type: string; subject_id: string; status: EvidenceStatus; observations: Observation[] }
 export interface ValidationResult { valid: boolean; active_scope: string; entities: number; links: number; routes: number }
 
 async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
