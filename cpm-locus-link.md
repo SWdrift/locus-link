@@ -82,6 +82,8 @@
 - Salt NativeHint 精确为 `salt customer-a-prod-01 test.ping --out=json`。
 - Salt success → failure（退出码 4 且 stdout 保持 JSON）→ recovery 会依次改变 Route status 与 Resolve evidence。
 - Project Beta 在 `device-b` 下不会复用 Alpha/`office-lan` 的不适用 evidence，Resolve 保持 unknown。
+- 同一 E2E 启动真实 `locus web` 子进程并复用 CLI fixture/Store，验证 Graph/Status/Knowledge/Resolve/Probe、failure/recovery、vantage 隔离、文档去重与 containment、Secret 边界及嵌入式 UI 入口。
+- 实际浏览器已验证 Graph、Status、Knowledge 三视图、Resolve、Probe、净化后的 Markdown 与窄屏无横向溢出；自动套件不依赖工作区外浏览器。
 
 运行：
 
@@ -109,3 +111,6 @@
 - `ff18ca1`：将可审阅 E2E fixture 固化到 `test/e2e/case/`，增强完整 Context/关系/路径断言。
 - `54e79b5`：增加面向使用者 README。
 - `4de7d41`：补齐 Salt NativeHint、status、failure/recovery 与 Beta vantage 覆盖。
+- `d684c34`：分离 `internal/locus` Core 与 `internal/cli` Cobra 适配层，抽取共用 Registry/runtime 装配。
+- `4ff18fd`：建立 loopback Web 服务、嵌入式 Vue/Vite 骨架与 Graph/Status/Knowledge 导航。
+- `a4d23a8`：完成 Core 读取投影、本机 `/api/v0`、Graph/Status/Knowledge、Resolve/Probe 体验与 Web 公共契约。

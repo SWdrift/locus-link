@@ -1,11 +1,14 @@
 package test
 
 import (
+	"bufio"
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -193,6 +197,8 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	betaStatus := runCLI(t, locusExe, projectB, env, "status", "route.prod-shell", "--vantage", "device-b", "--json")
 	assertStringAt(t, betaStatus, "evidence", "status", "unknown")
 
+	assertWebEndToEnd(t, locusExe, projectA, env, deviceA)
+
 	unresolved := runCLIExpectExitJSON(t, locusExe, projectA, env, 3, append([]string{"resolve", "production-host", "--capability", "missing.capability"}, runtimeArgs...)...)
 	assertStringAt(t, unresolved, "status", "unresolved")
 
@@ -204,6 +210,185 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	if err := os.Remove(duplicateRoute); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func assertWebEndToEnd(t *testing.T, executable, project string, env []string, deviceRoot string) {
+	t.Helper()
+	webBase, webClient := startWeb(t, executable, project, env)
+	webContext, _ := webJSON(t, webClient, http.MethodGet, webBase+"/api/v0/context", "", http.StatusOK)
+	assertStringAt(t, webContext, "active_scope", "id", "project.alpha")
+	assertStringAt(t, webContext, "runtime", "current_entity", "project.alpha::workstation.dev-a")
+
+	webGraph, graphBody := webJSON(t, webClient, http.MethodGet, webBase+"/api/v0/graph", "", http.StatusOK)
+	if strings.Contains(string(graphBody), "credential_ref") || strings.Contains(string(graphBody), "secret://") || strings.Contains(string(graphBody), "provider_data") {
+		t.Fatalf("graph leaked provider or secret data: %s", graphBody)
+	}
+	if entities, ok := webGraph["entities"].([]any); !ok || len(entities) != 3 {
+		t.Fatalf("unexpected Web graph entities: %#v", webGraph)
+	}
+	if routes, ok := webGraph["routes"].([]any); !ok || len(routes) != 2 {
+		t.Fatalf("unexpected Web graph routes: %#v", webGraph)
+	}
+
+	knowledge, _ := webJSON(t, webClient, http.MethodGet, webBase+"/api/v0/knowledge", "", http.StatusOK)
+	documentID := assertKnowledgeIndex(t, knowledge["documents"])
+	document, documentBody := webJSON(t, webClient, http.MethodGet, webBase+"/api/v0/knowledge/"+documentID, "", http.StatusOK)
+	assertStringAt(t, document, "format", "markdown")
+	if !strings.Contains(string(documentBody), "The shell route uses the existing FRP endpoint") {
+		t.Fatalf("project documentation body missing: %s", documentBody)
+	}
+	webJSON(t, webClient, http.MethodGet, webBase+"/api/v0/knowledge/not-a-document-path", "", http.StatusNotFound)
+
+	webResolve, _ := webJSON(t, webClient, http.MethodGet, webBase+"/api/v0/resolve?target=production-host&capability=shell&from=workstation.dev-a&vantage=office-lan", "", http.StatusOK)
+	assertStringAt(t, webResolve, "status", "resolved")
+	assertStringAt(t, webResolve, "route", "canonical_id", "project.alpha::route.prod-shell")
+
+	isolatedStatus, _ := webJSON(t, webClient, http.MethodGet, webBase+"/api/v0/status?vantage=device-b", "", http.StatusOK)
+	assertWebRouteStatus(t, isolatedStatus, "project.alpha::route.prod-salt", "unknown")
+
+	saltUp := filepath.Join(deviceRoot, "salt-up")
+	saltDown := filepath.Join(deviceRoot, "salt-down")
+	restoreSalt := func() {
+		if _, err := os.Stat(saltDown); err == nil {
+			_ = os.Rename(saltDown, saltUp)
+		}
+	}
+	t.Cleanup(restoreSalt)
+	if err := os.Rename(saltUp, saltDown); err != nil {
+		t.Fatal(err)
+	}
+	webFailure, _ := webJSON(t, webClient, http.MethodPost, webBase+"/api/v0/probes", `{"subject":"route.prod-salt","from":"workstation.dev-a","vantage":"office-lan","timeout_ms":5000}`, http.StatusOK)
+	assertStringAt(t, webFailure, "status", "failure")
+	failedWebStatus, _ := webJSON(t, webClient, http.MethodGet, webBase+"/api/v0/status?vantage=office-lan", "", http.StatusOK)
+	assertWebRouteStatus(t, failedWebStatus, "project.alpha::route.prod-salt", "failure")
+
+	restoreSalt()
+	webRecovery, _ := webJSON(t, webClient, http.MethodPost, webBase+"/api/v0/probes", `{"subject":"route.prod-salt","from":"workstation.dev-a","vantage":"office-lan","timeout_ms":5000}`, http.StatusOK)
+	assertStringAt(t, webRecovery, "status", "success")
+	recoveredWebStatus, _ := webJSON(t, webClient, http.MethodGet, webBase+"/api/v0/status?vantage=office-lan", "", http.StatusOK)
+	assertWebRouteStatus(t, recoveredWebStatus, "project.alpha::route.prod-salt", "success")
+
+	_, uiBody := webJSON(t, webClient, http.MethodGet, webBase+"/graph", "", http.StatusOK)
+	if !bytes.Contains(uiBody, []byte(`<div id="app"></div>`)) {
+		t.Fatal("embedded Web UI entry missing")
+	}
+}
+
+func startWeb(t *testing.T, executable, cwd string, env []string) (string, *http.Client) {
+	t.Helper()
+	command := exec.Command(executable, "web", "--from", "workstation.dev-a", "--vantage", "office-lan", "--address", "127.0.0.1:0")
+	command.Dir = cwd
+	command.Env = env
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr strings.Builder
+	command.Stderr = &stderr
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	reader := bufio.NewReader(stdout)
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		t.Fatalf("read Web startup: %v: %s", err, stderr.String())
+	}
+	const prefix = "Locus Web listening at "
+	if !strings.HasPrefix(line, prefix) {
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		t.Fatalf("unexpected Web startup output %q: %s", line, stderr.String())
+	}
+	t.Cleanup(func() {
+		if command.Process != nil {
+			_ = command.Process.Kill()
+		}
+		_ = command.Wait()
+	})
+	return strings.TrimSpace(strings.TrimPrefix(line, prefix)), &http.Client{Timeout: 5 * time.Second}
+}
+
+func webJSON(t *testing.T, client *http.Client, method, endpoint, body string, wantStatus int) (map[string]any, []byte) {
+	t.Helper()
+	request, err := http.NewRequest(method, endpoint, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body != "" {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	payload, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != wantStatus {
+		t.Fatalf("%s %s returned %d, want %d: %s", method, endpoint, response.StatusCode, wantStatus, payload)
+	}
+	result := map[string]any{}
+	if strings.Contains(response.Header.Get("Content-Type"), "application/json") {
+		if err := json.Unmarshal(payload, &result); err != nil {
+			t.Fatalf("decode %s %s: %v: %s", method, endpoint, err, payload)
+		}
+	}
+	return result, payload
+}
+
+func assertKnowledgeIndex(t *testing.T, value any) string {
+	t.Helper()
+	documents, ok := value.([]any)
+	if !ok || len(documents) != 2 {
+		t.Fatalf("unexpected knowledge index: %#v", value)
+	}
+	for _, item := range documents {
+		document, ok := item.(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected document: %#v", item)
+		}
+		path, _ := document["path"].(string)
+		if filepath.IsAbs(path) || strings.Contains(filepath.ToSlash(path), "../") {
+			t.Fatalf("document path escaped Scope docs: %#v", document)
+		}
+		if document["title"] == "Production access" {
+			associations, ok := document["associations"].([]any)
+			if !ok || len(associations) != 2 {
+				t.Fatalf("project document was not deduplicated: %#v", document)
+			}
+			id, ok := document["id"].(string)
+			if !ok || id == "" {
+				t.Fatalf("document ID missing: %#v", document)
+			}
+			return id
+		}
+	}
+	t.Fatalf("Production access document missing: %#v", value)
+	return ""
+}
+
+func assertWebRouteStatus(t *testing.T, status map[string]any, routeID, want string) {
+	t.Helper()
+	routes, ok := status["routes"].([]any)
+	if !ok {
+		t.Fatalf("missing Web route status: %#v", status)
+	}
+	for _, item := range routes {
+		route, ok := item.(map[string]any)
+		if !ok || route["route_id"] != routeID {
+			continue
+		}
+		evidence, ok := route["evidence"].(map[string]any)
+		if !ok || evidence["status"] != want {
+			t.Fatalf("route %s evidence = %#v, want %s", routeID, route["evidence"], want)
+		}
+		return
+	}
+	t.Fatalf("route %s missing from Web status: %#v", routeID, status)
 }
 
 func repositoryRoot(t *testing.T) string {

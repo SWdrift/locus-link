@@ -2,7 +2,7 @@
 
 ## Control Plane Role
 
-本控制平面管理 Locus Link 从窄 v0 到可执行 operational path 的连续演进。当前行动面仍是 declaration、Resolve、safe Probe / Observation、provider-native context 与 documentation references；长期允许在同一 Entity / Link / Route 模型上增加 Plan、Instance、Execute、Supervise、Teardown 和 WebUI。
+本控制平面管理 Locus Link 从窄 v0 到可执行 operational path 的连续演进。当前行动面是 declaration、Resolve、safe Probe / Observation、provider-native context、documentation references 与本机 WebUI；长期允许在同一 Entity / Link / Route 模型上增加 Plan、Instance、Execute、Supervise 和 Teardown。
 
 迭代必须由真实 Project/Environment 和可运行 Vertical Slice 驱动。Registry 是当前存储/组织形态，不是产品本体；后续层不得复制 Locus Core、隐藏 provider-native semantics，或为尚未验证的能力预建空框架。
 
@@ -63,13 +63,6 @@
 - 设计更新不得把尚未实现的行为写成当前代码事实；实现状态由代码与 E2E 证明。
 
 ## Task Board
-
-### Current Vertical Slice — WebUI
-
-- [ ] 完成 CLI/Web 共用 fixture 的浏览器集成测试，覆盖 evidence 更新、vantage 隔离、Markdown containment 和 Secret 边界。
-- [ ] 每个阶段完成时运行 `go test ./...` 与 `test/reproduce.ps1`，保留 `temp/e2e-run/` 并提交阶段代码。
-
-Workspace、Scope、Registry Source 和本地 Store 的目标边界以 [`documents/design/Workspace与Registry设计.md`](documents/design/Workspace与Registry设计.md) 为准；现行 `locus/v0` 公共契约在实现迁移前保持不变。
 
 ### Deferred Domain Cases
 

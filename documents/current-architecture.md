@@ -163,14 +163,17 @@ stateDiagram-v2
 
 唯一 workspace E2E 是 `TestWorkspaceEndToEnd`，由 `test/reproduce.ps1` 运行；测试重建 `temp/e2e-run/`，结束后保留二进制、具现化 Registry、SQLite 和 probe log。
 
-当前 case 只包含：
+当前 case 包含：
 
 - 两个具现化 project（alpha、beta），各自导入同一个 `environment.customer-a`；
 - workstation、host、FRP server 三类 Entity；
 - `frp-stcp + ssh` 两步 Shell Route，以及单步 Salt Route；
+- Environment host 与 Project Link/Route 关联的两份 Scope 文档；
 - 工作区内的模拟 `frpc/ssh/salt` 可执行文件和真实本地 TCP listener。
 
 E2E 已覆盖 `init`、严格命令参数、Registry 向上发现、validate、context、list、show；证明 Resolve 不触发 Probe；证明 Shell Route 的 FRP/SSH 顺序 Probe、直接 Link Probe、Salt success/failure/recovery、SQLite 追加计数、status 与 Resolve evidence 更新、不同 vantage 隔离，以及 unresolved/ambiguous 与“不按 evidence 排名”。
+
+同一 E2E 还启动真实 `locus web` 子进程，复用上述 Registry、helper 与 Store，覆盖 Context、Graph、Status、Knowledge、Resolve、Probe failure/recovery、vantage 隔离、文档去重/路径边界、Provider data/Secret 不泄漏和嵌入式 UI 入口。浏览器已对 Graph、Status、Knowledge、Resolve、Probe 及窄屏布局完成实际交互验证。
 
 ## 8. 公共契约符合度
 
