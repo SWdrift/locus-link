@@ -441,13 +441,6 @@ func (c *CLI) probe(parent context.Context, inputRef string, opts options) (any,
 	if err != nil {
 		return nil, cliError{code: 2, err: err}
 	}
-	id, kind, err := assembly.registry.ResolveAny(inputRef)
-	if err != nil {
-		return nil, cliError{code: 2, err: err}
-	}
-	if kind != "link" && kind != "route" {
-		return nil, cliError{code: 2, err: errors.New("probe accepts only Link or Route")}
-	}
 	timeout, err := time.ParseDuration(opts.Timeout)
 	if err != nil || timeout <= 0 {
 		return nil, cliError{code: 2, err: fmt.Errorf("invalid --timeout %q", opts.Timeout)}
@@ -459,48 +452,15 @@ func (c *CLI) probe(parent context.Context, inputRef string, opts options) (any,
 	defer store.Close()
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
-
-	links := []string{id}
-	if kind == "route" {
-		links = make([]string, 0, len(assembly.registry.Routes[id].Steps))
-		for _, step := range assembly.registry.Routes[id].Steps {
-			links = append(links, step.Link)
+	result, err := assembly.registry.Probe(ctx, inputRef, assembly.runtime, locus.NewProviders(), store)
+	if err != nil {
+		var inputError locus.ProbeInputError
+		if errors.As(err, &inputError) {
+			return nil, cliError{code: 2, err: err}
 		}
+		return nil, err
 	}
-	providers := locus.NewProviders()
-	observations := make([]locus.Observation, 0, len(links))
-	failed := false
-	for _, linkID := range links {
-		link := assembly.registry.Links[linkID]
-		if link.From != assembly.runtime.CurrentEntity {
-			return nil, cliError{code: 2, err: fmt.Errorf("link %s is not applicable from %s", linkID, assembly.runtime.CurrentEntity)}
-		}
-		provider, ok := providers.Get(link.Provider)
-		if !ok {
-			return nil, cliError{code: 2, err: fmt.Errorf("unsupported provider %s", link.Provider)}
-		}
-		observation, appendErr := store.Append(ctx, provider.Probe(ctx, link, assembly.runtime))
-		if appendErr != nil {
-			return nil, appendErr
-		}
-		observations = append(observations, observation)
-		if observation.Status == "failure" {
-			failed = true
-			break
-		}
-	}
-	status := "success"
-	if failed {
-		status = "failure"
-	}
-	result := map[string]any{
-		"input_ref":    inputRef,
-		"subject_type": kind,
-		"subject_id":   id,
-		"status":       status,
-		"observations": observations,
-	}
-	if failed {
+	if result.Status == "failure" {
 		return result, cliError{code: 4, err: errors.New("probe failed")}
 	}
 	return result, nil

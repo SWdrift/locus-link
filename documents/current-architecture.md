@@ -153,7 +153,7 @@ stateDiagram-v2
 | `resolve <target> --capability <name>` | 按当前规则筛选显式 Route 并附加既有证据 |
 | `probe <link-or-route-id>` | 执行 safe probe 并追加 Observation |
 | `status [link-or-route-id]` | 查看最新 Link/Route evidence 或按状态汇总 |
-| `web` | 装载 Registry context，启动 loopback HTTP server 并提供嵌入式 Vue Graph/Status/Knowledge 导航骨架 |
+| `web` | 装载 Registry 与本机 Store，启动 loopback HTTP server；Vue Graph/Status/Knowledge 提供声明图、证据、文档、Resolve 与显式 safe Probe |
 
 `context`、`resolve`、`probe` 需要 `--from`；`resolve` 还需要 `--capability`。`web` 的 `--from/--vantage` 是初始页面上下文；`web` 只允许 loopback `--address`。各命令可用 `--registry` 覆盖发现结果。
 
@@ -187,9 +187,8 @@ E2E 已覆盖 `init`、严格命令参数、Registry 向上发现、validate、c
 以下能力在当前 Go model、CLI wiring、Provider registry 和 E2E case 中均无实现：
 
 - PostgreSQL Provider、声明与 E2E case；Gitea CI/CD 的声明、Route 与 E2E case；
-- 扫描 `docs/`、documentation discovery、文档内容加载或 progressive disclosure；
+- 未被声明引用的 `docs/` 自动扫描、全文索引或 documentation discovery；
 - Plan、Instance、Execute 阶段或通用执行器；NativeHint 只是 Provider-native 命令提示；
 - 自动 Route discovery、路径搜索、候选 ranking；
-- Web Graph/Status/Knowledge 的完整读取投影、Markdown 内容加载、Resolve 与 Probe 交互；
 
 因此，设计文档中的任何上述目标都不能视为当前实现能力；新增实现后应先更新本快照中的清单和 E2E 基线。

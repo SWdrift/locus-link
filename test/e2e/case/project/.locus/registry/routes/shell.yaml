@@ -4,3 +4,6 @@ id: route.prod-shell
 steps:
   - link: link.prod-frp
   - link: link.prod-ssh
+documentation:
+  - ref: ../docs/production-access.md
+    title: Production access

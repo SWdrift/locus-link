@@ -3,3 +3,6 @@ type: entity
 id: host.prod-01
 kind: host
 name: Production Host
+documentation:
+  - ref: ../docs/production-host.md
+    title: Production host

@@ -20,7 +20,7 @@
 - Observation 只记录 canonical Link subject + vantage；Route 状态实时聚合，不落库。Provider safe probe passed 不等于完整 capability 已被证明。
 - Documentation reference 属于 declaration graph，供 Agent progressive context disclosure；文档内容不覆盖结构化声明，也不参与 capability、Route 或 execution 语义。
 - Documentation reference 必须是相对路径，词法归一化和符号链接解析后都受限于所属 Scope Registry 的 `docs/`。
-- CLI、Agent 与未来 WebUI 共享同一个 Locus Core / truth source；初始 WebUI 可围绕 Graph、Status、Knowledge 做 read-oriented 视图。
+- CLI、Agent 与本机 WebUI 共享同一个 Locus Core / truth source；WebUI 固定围绕 Graph、Status、Knowledge、Resolve 与显式 safe Probe，不成为独立状态源或远程控制面。
 - Observation Store v0 是本机 SQLite，不建设 shared/global/remote Store abstraction。
 - CLI 当前外层 contract 是 `resolve / probe`；其余一级命令按 inspection 与 registry authoring 分层。
 - Locus 当前目标采用 local-first Workspace：用户 Locus Home 管理 Catalog、Profile、远程缓存和本地 Workspace SQLite；项目可以使用 managed Registry 或 embedded `.locus/registry`。
@@ -30,7 +30,7 @@
 
 ## Documentation Architecture
 
-- 用户、Agent、Registry 作者和自动化直接依赖的 CLI、JSON 与 YAML 统一放在 `documents/design/contracts/`，视为需要兼容或显式升级的公共契约。
+- 用户、Agent、Registry 作者和自动化直接依赖的 CLI、HTTP API、JSON 与 YAML 统一放在 `documents/design/contracts/`，视为需要兼容或显式升级的公共契约。
 - Provider Go interface、Resolver、Observation Store 和 SQLite schema 当前是内部契约或实现细节，不因被记录而成为外部兼容承诺。
 - `documents/design/Workspace与Registry设计.md` 维护 Locus Home、Scope、Registry Source、项目关联、组合和本地 Store 归属；`documents/design/系统设计.md` 从 Canonical Declared View 开始维护 Resolve / Probe → Provider → Observation 的 Core 处理链。
 - `documents/design/数据流与存储设计.md` 维护来源、变换、ownership、持久化、freshness 和 Secret 血缘，不复制公共 schema 或 SQLite 具体表结构。
@@ -42,12 +42,14 @@
 - Gitea CI/CD：`source`、`ci-worker`、`production` Bindings 与 Gitea→FRP/bastion→worker→existing deploy mechanism 显式 Route，应让 Agent 发现既有 deployment path；Locus 不重建 Runner、FRP 或 CI/CD。
 - Gitea 已有真实路径，不再属于 Awaiting Real Need；是否新增 Provider 取决于某一步是否存在独立 Validate/Render/Probe 契约，而不是对象名称。
 - 当前 `Link.from == current_entity` applicability 可能阻塞 worker/deploy 或 tunnel 实例化语义；必须由两个案例验证后，才决定是否增加最小 step condition/output 表达。
-- 下一步优先稳定 Entity facts、Resolve documentation discovery、provider-native hint 与结构化 read contract；不创建 Planner、Executor、Runtime、InstanceManager、WebServer 或 GraphEngine 脚手架。
+- 下一步优先稳定 Entity facts、Resolve documentation discovery、provider-native hint 与结构化 read contract；不创建 Planner、Executor、Runtime、InstanceManager 或 GraphEngine 脚手架。
 
 ## Verified Implementation Baseline
 
 - Go module，单一 `locus` executable；Cobra adapter 位于 `internal/cli/`，领域模型、Resolver、Provider 和 Store 位于 `internal/locus/`。
-- 本机 Web 入口位于 `internal/web/`，通过 `locus web` 启动 loopback HTTP server；Vue/Vite 资源编译后嵌入同一 executable，初始 Context API 使用 Core 的 Registry discovery 和 vantage 规则。
+- 本机 Web 入口位于 `internal/web/`，通过 `locus web` 启动 loopback HTTP server；Vue/Vite 资源编译后嵌入同一 executable。`/api/v0` 直接复用 Core 提供 Context、Graph、Status、Knowledge、Validate、Resolve 与 safe Probe。
+- Graph 投影不暴露 Provider data；Knowledge 只读取声明引用且经符号链接解析后仍位于所属 Scope `docs/` 的文件，同路径多 association 去重；Markdown 禁用 HTML 并经 DOMPurify 净化。
+- Web 只接受 loopback listener 与本机 Host，拒绝 cross-site fetch；读取和 Resolve 不写状态，只有显式 Probe 追加 Link Observation。
 - Project 可以按本地路径 import Environment，alias 归一化到 `<scope-id>::<local-id>` canonical identity。
 - 已实现 FRP、SSH、Salt Provider：Validate、Render NativeHint、safe Probe；无通用 Execute。
 - FRP Probe 使用 `frpc verify` 和现有本地 endpoint；SSH Probe 使用 TCP 与 `ssh -G`；Salt Probe 只调用 `test.ping`。

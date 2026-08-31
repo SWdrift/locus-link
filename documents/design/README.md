@@ -8,6 +8,7 @@
 - [公共契约](contracts/README.md)：用户、Agent、Registry 作者和自动化可以依赖的稳定接口。
   - [CLI 契约](contracts/CLI契约.md)：命令、flags、JSON、副作用和退出码。
   - [声明契约](contracts/声明契约.md)：Registry、YAML schema、identity、引用和 Provider data。
+  - [本机 Web 契约](contracts/Web契约.md)：loopback API、读取投影、Resolve、Probe 和浏览器安全边界。
 - [Workspace 与 Registry 设计](Workspace与Registry设计.md)：Locus Home、Scope、Registry Source、项目关联、组合和本地 Observation 归属。
 - [系统设计](系统设计.md)：Canonical Declared View、Resolve、Provider、Probe 和 Observation 的内部协作。
 - [数据流与存储设计](数据流与存储设计.md)：数据来源、变换、持久化、ownership 和 Secret 血缘。
@@ -21,7 +22,7 @@
 
 ## 管理规则
 
-- 公共 YAML、CLI 和 JSON 的破坏性变化必须显式版本化或迁移。
+- 公共 YAML、CLI、HTTP API 和 JSON 的破坏性变化必须显式版本化或迁移。
 - Go API、SQLite schema 和内部组件拆分不是公共兼容承诺。
 - 同一规则只在一份权威文档中完整定义，其他文档使用链接。
 - 当前代码盘点和契约偏差只写入 `../current-architecture.md`。

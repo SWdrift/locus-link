@@ -1,8 +1,8 @@
 # Locus Link
 
-Locus Link 根据当前 operational context、目标和 capability 解析人工声明的 Route，返回 canonical target、ordered Links、Provider 原生上下文和最近的 Observation。它不执行 Route，不启动 FRP、不建立 SSH session，也不执行 Salt operation。
+Locus Link 根据当前 operational context、目标和 capability 解析人工声明的 Route，返回 canonical target、ordered Links、Provider 原生上下文和最近的 Observation。它不执行 Route，不启动 FRP、不建立 SSH session，也不执行 Salt operation；Probe 只执行 Provider 定义的安全检查。
 
-当前不包含自动路径发现、Planner、Executor、Graph DB、远程 Registry、Web UI 或 Secret Store。
+当前实现同时提供 CLI 与本机 Web UI；不包含自动路径发现、Planner、Executor、Graph DB、远程 Registry 或 Secret Store。
 
 ## Quick Start
 
@@ -139,7 +139,13 @@ object: <canonical Entity declaration>
 locus web --from workstation.dev-a --vantage office-lan
 ```
 
-`web` 启动只监听本机回环地址的嵌入式 Vue 界面，使用与 CLI 相同的 Registry 和 Locus Core。当前入口提供 Graph、Status、Knowledge 三个导航视图及真实 Scope context；后续读取和 Probe 能力继续复用 Core，不通过子进程调用 CLI。
+`web` 启动只监听本机回环地址的嵌入式 Vue 界面，使用与 CLI 相同的 Registry、Locus Core 和本机 Observation Store，不通过子进程调用 CLI。
+
+- **Graph**：查看 Entity、Link 与 Route，解析 target/capability，并显式 Probe 所选 Link 或 Route；
+- **Status**：查看指定 vantage 的最新 Link evidence 与动态 Route evidence；
+- **Knowledge**：浏览声明引用的 Scope 文档；内容只从 Scope `docs/` 目录加载，Markdown 经安全净化。
+
+页面读取和 Resolve 不写状态。只有用户显式触发 Probe 时写入 Link Observation。HTTP 接口与本机访问安全边界见[本机 Web 契约](documents/design/contracts/Web契约.md)。
 
 ## Registry Discovery
 

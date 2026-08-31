@@ -16,14 +16,14 @@
 ## Scope
 
 - 产品入口：`cmd/locus/main.go`、`internal/locus/`。
-- 公共契约：`documents/design/contracts/`，维护用户、Agent 和 Registry 作者依赖的 CLI、JSON 与 YAML。
+- 公共契约：`documents/design/contracts/`，维护用户、Agent 和 Registry 作者依赖的 CLI、HTTP API、JSON 与 YAML。
 - 内部设计：`documents/design/系统设计.md`、`documents/design/数据流与存储设计.md`；当前 CLI 用户摘要：根目录 `README.md`。
 - 实现快照：`documents/current-architecture.md`，记录当前代码与 E2E 已证明的事实及契约偏差。
 - 背景资料：`documents/reference/Necessary Project Context.md`，提供问题来源和外部约束，不作为公共契约或当前实现事实源。
 - E2E 声明：`test/e2e/case/`；测试驱动：`test/e2e_test.go`；复现入口：`test/reproduce.ps1`。
 - 运行产物：`temp/e2e-run/`，必须保留供人工复现。
-- 当前 v0 不实现 Planner、自动 path discovery、通用 Executor、Route Instance lifecycle、WebUI、Graph DB、远程 Registry、复杂 Store 或治理。
-- 下一阶段允许规划 WebUI、Plan / Instance 语义验证和逐步 executable Route；未被真实案例需要前不创建 WebServer、Planner、Executor、Runtime、InstanceManager 或 GraphEngine 脚手架。
+- 当前 v0 不实现 Planner、自动 path discovery、通用 Executor、Route Instance lifecycle、Graph DB、远程 Registry、复杂 Store 或治理。
+- 当前 WebUI 是 loopback 本机读写界面：读取 Graph、Status、Knowledge，复用 Core 执行 Resolve 与显式 safe Probe；不引入远程服务。
 
 ## Core Rules
 
@@ -51,14 +51,14 @@
 ### 演进约束
 
 - 当前 Locus v0 不拥有通用执行器；长期允许 Route 被编译、实例化并执行，但必须调用 provider-native mechanism，禁止万能 `host.exec()`。
-- CLI、Agent 与未来 WebUI 共享同一 Locus Core / truth source；WebUI 不复制 declaration、observation 或 documentation 模型。
-- WebUI 下一阶段优先 read-oriented Graph、Status、Knowledge 三个视图；当前只稳定读取 contract，不提前建设复杂 API/framework。
+- CLI、Agent 与 WebUI 共享同一 Locus Core / truth source；WebUI 不复制 declaration、observation 或 documentation 模型。
+- WebUI 固定为 read-oriented Graph、Status、Knowledge 加显式 safe Probe；不扩展为远程控制面或独立状态源。
 - PostgreSQL 和真实 Gitea + FRP + worker CI/CD 是 first-class special cases，不再放入 Awaiting Real Need。
 - 新字段、Provider 或抽象必须由上述真实案例证明；优先最小 schema/output 增量，不创建空接口、目录或兼容层。
 
 ### 变更同步
 
-- CLI、JSON 或 YAML 变化时同步 `documents/design/contracts/`、README、E2E fixture 和断言；Core 或 Store 语义变化时同步系统设计与数据流设计。
+- CLI、HTTP API、JSON 或 YAML 变化时同步 `documents/design/contracts/`、README、E2E fixture 和断言；Core 或 Store 语义变化时同步系统设计与数据流设计。
 - 长期可复用决策和坑点沉淀到 `cpm-locus-link.md`；一次性过程不进入 CPM。
 - 设计更新不得把尚未实现的行为写成当前代码事实；实现状态由代码与 E2E 证明。
 
@@ -66,7 +66,6 @@
 
 ### Current Vertical Slice — WebUI
 
-- [ ] 完成 Graph、Status、Knowledge、Resolve、Validate 和 safe Probe 的 Web 体验；Profile/vantage 由启动默认值并允许页面切换。
 - [ ] 完成 CLI/Web 共用 fixture 的浏览器集成测试，覆盖 evidence 更新、vantage 隔离、Markdown containment 和 Secret 边界。
 - [ ] 每个阶段完成时运行 `go test ./...` 与 `test/reproduce.ps1`，保留 `temp/e2e-run/` 并提交阶段代码。
 

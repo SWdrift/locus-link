@@ -11,3 +11,6 @@ provider_data:
   host: 127.0.0.1
   port: {{PORT}}
   credential_ref: secret://ssh/customer-a-prod
+documentation:
+  - ref: ../docs/production-access.md#verification
+    title: Production access
