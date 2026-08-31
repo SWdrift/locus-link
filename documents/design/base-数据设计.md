@@ -145,7 +145,7 @@ Observation 只能在形成实际测量结果后追加。声明/binding 错误�
 
 ### Observation record 血缘
 
-Observation 的适用性与 Route evidence 语义由[基础系统设计的 Probe 与 Observation](base-系统设计.md#probe-与-observation)统一定义。本文只约束各记录字段从哪里产生：
+Observation 的适用性与 Route evidence 语义由[基础系统设计的 Link Observation](base-系统设计.md#link-observation)统一定义。本文只约束各记录字段从哪里产生：
 
 | 记录信息 | 来源 |
 |---|---|

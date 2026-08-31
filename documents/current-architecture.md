@@ -170,7 +170,7 @@ stateDiagram-v2
 
 ## 7. 当前 E2E 基线
 
-唯一 workspace E2E 是 `TestWorkspaceEndToEnd`，由 `test/reproduce.ps1` 运行；测试重建 `temp/e2e-run/`，结束后保留二进制、具现化 Registry、SQLite 和 probe log。
+唯一 workspace E2E 是 `TestWorkspaceEndToEnd`，由 `scripts/test-e2e.ps1` 运行；测试重建 `temp/e2e-run/`，结束后保留二进制、具现化 Registry、SQLite 和 probe log。
 
 当前 case 包含：
 

@@ -94,7 +94,7 @@
 运行：
 
 ```powershell
-./test/reproduce.ps1
+./scripts/test-e2e.ps1
 ```
 
 运行后必须保留 `temp/e2e-run/`：其中包含两个物化 Project、Environment、设备状态、helper、`locus.exe` 和 SQLite，供人工复现。
@@ -103,7 +103,7 @@
 
 - Go cache 和 module cache 必须放在 `temp/.go-cache`、`temp/.go-mod-cache`、`temp/.go-path`。非隐藏 `temp/go-mod-cache` 会被 `go test ./...` 当作 module 子树扫描并失败。
 - Go module cache 文件可能是只读；若确需删除，应先用对应 `GOMODCACHE` 执行 `go clean -modcache`。当前规则是保留测试产物和缓存，不主动清理。
-- E2E 的 FRP/SSH TCP listener 只在测试进程期间存活。测试完成后手动 `probe route.prod-shell` 失败是正确结果；重跑 `test/reproduce.ps1` 才能复现完整成功闭环。
+- E2E 的 FRP/SSH TCP listener 只在测试进程期间存活。测试完成后手动 `probe route.prod-shell` 失败是正确结果；重跑 `scripts/test-e2e.ps1` 才能复现完整成功闭环。
 - Salt helper 不依赖 listener，可在保留的 `temp/e2e-run/` 中手动切换 `salt-up/salt-down` 观察 failure/recovery。
 - E2E source fixture 应保持可审阅并提交；动态端口、绝对 FRP config path、Project ID 和 workstation 只在物化时替换。
 - 新 Provider 应自报 executable；`Providers.Available` 从 Provider registry 推导并排序，避免新增 Provider 时维护重复列表。

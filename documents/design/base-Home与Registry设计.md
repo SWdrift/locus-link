@@ -208,7 +208,7 @@ Registry declaration
 → local locus-link State DB
 ```
 
-Observation applicability 的详细键由[基础系统设计](base-系统设计.md#observation-与-evidence)定义。Profile ID 可以作为 provenance 保存，但不能整体充当 validity key；只有真正影响 Probe 语义的 context fingerprint 参与适用性判断。
+Observation applicability 的详细键由[基础系统设计](base-系统设计.md#link-observation)定义。Profile ID 可以作为 provenance 保存，但不能整体充当 validity key；只有真正影响 Probe 语义的 context fingerprint 参与适用性判断。
 
 远程 Registry 不接收 Observation，也不注册整个 Home。
 

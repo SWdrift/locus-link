@@ -21,7 +21,7 @@ locus-link 控制面覆盖 concrete environment knowledge 与 native/MCP mechani
 - 实现快照：`documents/current-architecture.md`，记录当前代码与 E2E 已证明的事实及契约偏差。
 - 背景资料：`documents/reference/Necessary Project Context.md`，提供问题来源和外部约束，不作为公共契约或当前实现事实源。
 - MCP 分层背景参考：[`documents/reference/locus-link 与 MCP.md`](documents/reference/locus-link%20与%20MCP.md)；确定设计仍以 `documents/design/` 为准。
-- E2E 声明：`test/e2e/case/`；测试驱动：`test/e2e_test.go`；复现入口：`test/reproduce.ps1`。
+- E2E 声明：`test/e2e/case/`；测试驱动：`test/e2e_test.go`；快速入口：`scripts/test-e2e.ps1`。
 - 运行产物：`temp/e2e-run/`，必须保留供人工复现。
 - 当前 v0 不实现 locus-link Home Catalog、managed/remote Source、Profile、MCP Adapter/MCP provider binding 或远程 Store。
 - 当前 WebUI 是 loopback 本机界面：读取 Graph、Status、Knowledge，复用 Core 执行 Resolve 与显式 safe Probe；不引入远程服务。
@@ -34,7 +34,7 @@ locus-link 控制面覆盖 concrete environment knowledge 与 native/MCP mechani
 - 测试不得依赖本机安装的 FRP、SSH、Salt、PostgreSQL、Gitea 服务或用户凭据；外部行为使用工作区内确定性 helper。
 - 可审阅的 E2E 声明和模拟设备状态放在 `test/e2e/case/`；物化副本放在 `temp/e2e-run/`。
 - 新运行可以确定性替换 `temp/e2e-run/`，测试结束不得清理它。
-- 行为改动以 `go test ./...` 及 `test/reproduce.ps1` 的完整闭环通过为完成条件。
+- 行为改动以 `go test ./...` 及 `scripts/test-e2e.ps1` 的完整闭环通过为完成条件。
 
 ### 产品与模型
 

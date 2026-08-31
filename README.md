@@ -66,7 +66,7 @@ PowerShell：
 ```powershell
 New-Item -ItemType Directory -Force temp/bin | Out-Null
 go build -o temp/bin/locus.exe ./cmd/locus
-./test/reproduce.ps1
+./scripts/test-e2e.ps1
 ```
 
 POSIX shell：
@@ -78,6 +78,14 @@ go test ./...
 ```
 
 E2E declarations 和 simulated device state 位于 `test/e2e/case/`；完整运行产物保留在 `temp/e2e-run/`。
+
+Windows 可直接启动保留案例的 Web UI：
+
+```powershell
+./scripts/start-test-web.ps1
+```
+
+首次运行或需要用当前源码重新生成 E2E 产物时添加 `-Refresh`；脚本启动中文优先的 Project Alpha 页面，按 `Ctrl+C` 停止服务。
 
 ## Documentation
 
