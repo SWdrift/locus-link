@@ -1,14 +1,14 @@
 # Locus Link 当前实现快照
 
-本文只记录当前 Go 实现与可执行 E2E 已经证明的事实，作为易变实现清单。公共目标由 [`design/contracts/`](design/contracts/README.md) 定义，内部目标由[系统设计](design/系统设计.md)和[数据流与存储设计](design/数据流与存储设计.md)定义。除“明确未实现”一节外，本文不描述计划中的架构。
+本文只记录当前 Go 实现与可执行 E2E 已经证明的事实，作为易变实现清单。公共目标由 [`design/contracts/`](design/contracts/README.md) 定义，Workspace 目标由 [Workspace 与 Registry 设计](design/Workspace与Registry设计.md)定义，Core 内部目标由[系统设计](design/系统设计.md)和[数据流与存储设计](design/数据流与存储设计.md)定义。除“明确未实现”一节外，本文不描述计划中的架构。
 
 ## 1. 总体结构与数据流
 
-当前只有一个 `locus` CLI 进程。声明保存在 YAML Registry 中，运行观测追加到本机 SQLite；Resolve 读取声明和既有 Observation，但不会主动 Probe。
+当前发布一个 `locus` executable：Cobra CLI 与 loopback WebUI 共用 `internal/locus` Core。声明保存在 YAML Registry 中，运行观测追加到本机 SQLite；Resolve 读取声明和既有 Observation，但不会主动 Probe。
 
 ```mermaid
 flowchart LR
-    User["用户 / Agent"] --> CLI["locus CLI<br/>init · validate · context · list · show<br/>resolve · probe · status"]
+    User["用户 / Agent"] --> CLI["locus CLI / local Web<br/>init · validate · context · list · show<br/>resolve · probe · status · web"]
 
     CWD["当前目录或 --registry"] --> Discover["向上发现<br/>.locus/registry/scope.yaml"]
     Discover --> Loader["严格 YAML 加载器"]
@@ -141,7 +141,7 @@ stateDiagram-v2
 
 ## 6. 当前 CLI 清单
 
-除 help 外，根命令固定注册八个子命令；所有业务结果都是 JSON，默认缩进，`--json` 改为紧凑输出。
+除 help 外，根命令固定注册九个子命令；结果型命令输出 JSON，`web` 启动长运行的本机 HTTP 服务。
 
 | 命令 | 当前行为 |
 |---|---|
@@ -153,8 +153,9 @@ stateDiagram-v2
 | `resolve <target> --capability <name>` | 按当前规则筛选显式 Route 并附加既有证据 |
 | `probe <link-or-route-id>` | 执行 safe probe 并追加 Observation |
 | `status [link-or-route-id]` | 查看最新 Link/Route evidence 或按状态汇总 |
+| `web` | 装载 Registry context，启动 loopback HTTP server 并提供嵌入式 Vue Graph/Status/Knowledge 导航骨架 |
 
-`context`、`resolve`、`probe` 需要 `--from`；`resolve` 还需要 `--capability`。`context`、`resolve`、`probe` 接受 `--vantage`，`status` 单独接受 `--vantage`。各命令可用 `--registry` 覆盖发现结果。
+`context`、`resolve`、`probe` 需要 `--from`；`resolve` 还需要 `--capability`。`web` 的 `--from/--vantage` 是初始页面上下文；`web` 只允许 loopback `--address`。各命令可用 `--registry` 覆盖发现结果。
 
 `validate`、`list`、`show` 只装载声明，不解析 runtime、PATH、vantage 或 Observation state；`context`、`resolve`、`probe`、`status` 分别按实际消费装配运行时或状态依赖。
 
@@ -189,6 +190,6 @@ E2E 已覆盖 `init`、严格命令参数、Registry 向上发现、validate、c
 - 扫描 `docs/`、documentation discovery、文档内容加载或 progressive disclosure；
 - Plan、Instance、Execute 阶段或通用执行器；NativeHint 只是 Provider-native 命令提示；
 - 自动 Route discovery、路径搜索、候选 ranking；
-- WebUI、HTTP server、页面或前端资源。
+- Web Graph/Status/Knowledge 的完整读取投影、Markdown 内容加载、Resolve 与 Probe 交互；
 
 因此，设计文档中的任何上述目标都不能视为当前实现能力；新增实现后应先更新本快照中的清单和 E2E 基线。

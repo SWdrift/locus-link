@@ -66,7 +66,6 @@
 
 ### Current Vertical Slice — WebUI
 
-- [ ] 建立本机 HTTP 服务、Vue 工程和嵌入式静态资源，真实读取当前 Registry context。
 - [ ] 完成 Graph、Status、Knowledge、Resolve、Validate 和 safe Probe 的 Web 体验；Profile/vantage 由启动默认值并允许页面切换。
 - [ ] 完成 CLI/Web 共用 fixture 的浏览器集成测试，覆盖 evidence 更新、vantage 隔离、Markdown containment 和 Secret 边界。
 - [ ] 每个阶段完成时运行 `go test ./...` 与 `test/reproduce.ps1`，保留 `temp/e2e-run/` 并提交阶段代码。

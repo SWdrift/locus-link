@@ -23,8 +23,9 @@ const (
 )
 
 type CLI struct {
-	stdout io.Writer
-	stderr io.Writer
+	stdout     io.Writer
+	stderr     io.Writer
+	extensions []*cobra.Command
 }
 
 type options struct {
@@ -45,7 +46,9 @@ type cliError struct {
 func (e cliError) Error() string { return e.err.Error() }
 func (e cliError) Unwrap() error { return e.err }
 
-func NewCLI(stdout, stderr io.Writer) *CLI { return &CLI{stdout: stdout, stderr: stderr} }
+func NewCLI(stdout, stderr io.Writer, extensions ...*cobra.Command) *CLI {
+	return &CLI{stdout: stdout, stderr: stderr, extensions: extensions}
+}
 
 type commandState struct {
 	result any
@@ -129,6 +132,7 @@ func (c *CLI) rootCommand(state *commandState) *cobra.Command {
 		c.initCommand(state),
 		c.validateCommand(state),
 	)
+	root.AddCommand(c.extensions...)
 	return root
 }
 
@@ -545,18 +549,7 @@ func (c *CLI) status(args []string, opts options) (any, error) {
 }
 
 func (c *CLI) loadRegistryDeclarations(opts options) (*locus.Registry, error) {
-	root := opts.Registry
-	if root == "" {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return nil, err
-		}
-		root, err = locus.DiscoverRegistry(cwd)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return locus.LoadRegistry(root)
+	return locus.LoadActiveRegistry(opts.Registry)
 }
 
 func (c *CLI) assembleContextState(opts options) (runtimeStateAssembly, error) {
@@ -578,7 +571,7 @@ func (c *CLI) assembleRuntimeState(opts options) (runtimeStateAssembly, error) {
 	if err != nil {
 		return runtimeStateAssembly{}, err
 	}
-	runtime, err := requiredRuntime(registry, opts)
+	runtime, err := locus.RequiredRuntime(registry, opts.From, opts.Vantage)
 	if err != nil {
 		return runtimeStateAssembly{}, err
 	}
@@ -594,7 +587,7 @@ func (c *CLI) assembleObservationState(opts options) (observationStateAssembly, 
 	if err != nil {
 		return observationStateAssembly{}, err
 	}
-	vantage, err := observationVantage(opts)
+	vantage, err := locus.ObservationVantage(opts.Vantage)
 	if err != nil {
 		return observationStateAssembly{}, err
 	}
@@ -603,30 +596,4 @@ func (c *CLI) assembleObservationState(opts options) (observationStateAssembly, 
 		return observationStateAssembly{}, err
 	}
 	return observationStateAssembly{registry: registry, vantage: vantage, statePath: statePath}, nil
-}
-
-func requiredRuntime(registry *locus.Registry, opts options) (locus.RuntimeContext, error) {
-	vantage, err := observationVantage(opts)
-	if err != nil {
-		return locus.RuntimeContext{}, err
-	}
-	if opts.From == "" {
-		return locus.RuntimeContext{}, errors.New("--from is required for this command")
-	}
-	currentEntity, err := registry.ResolveEntity(opts.From)
-	if err != nil {
-		return locus.RuntimeContext{}, err
-	}
-	return locus.RuntimeContext{CurrentEntity: currentEntity, Vantage: vantage}, nil
-}
-
-func observationVantage(opts options) (string, error) {
-	if opts.Vantage != "" {
-		return opts.Vantage, nil
-	}
-	host, err := os.Hostname()
-	if err != nil {
-		return "", err
-	}
-	return "host:" + host, nil
 }

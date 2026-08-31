@@ -55,8 +55,9 @@ Resolve 与 Probe 分开：Resolve 读取声明和证据；Probe 测量现实并
 | Inspection | `locus status [link-or-route-id]` | 查看已有 Link 或 Route evidence | 无 |
 | Authoring | `locus init --scope-kind <project\|environment> --scope-id <id>` | 创建最小 Registry | 创建目录和 YAML |
 | Authoring | `locus validate` | 校验 Registry 声明 | 无 |
+| Local UI | `locus web` | 启动只监听本机回环地址的 WebUI | 运行本地 HTTP 服务 |
 
-Inspection 用于查看和排错，不是 Resolve 的前置步骤。Authoring 只维护声明，不要求 actor 或 vantage。
+Inspection 用于查看和排错，不是 Resolve 的前置步骤。Authoring 只维护声明，不要求 actor 或 vantage。`web` 读取同一 Registry/Core，启动时不执行 Probe。
 
 ## Resolve
 
@@ -127,6 +128,10 @@ object: <canonical Entity declaration>
 
 `status <link-id>` 读取指定 vantage 下最新的 Link Observation。`status <route-id>` 从 constituent Link observations 动态聚合 Route evidence。
 
+### `web`
+
+`web` 启动本机 HTTP 服务并提供嵌入式 WebUI。默认使用当前 Registry discovery，可通过 `--registry` 覆盖；`--from` 和 `--vantage` 设置页面的初始 Runtime Context。首版只允许 loopback `--address`，不提供远程服务、认证或远程 Observation Store。
+
 ### `init` 与 `validate`
 
 `init` 创建最小本地 Registry，不初始化 Git。`validate` 校验 Scope、imports、bindings、声明引用、Route 和 Provider data，不连接 endpoint。
@@ -152,7 +157,7 @@ Locus 默认从 cwd 向父目录查找：
 
 ## 参数
 
-`--json` 适用于全部命令：
+`--json` 适用于所有返回结构化命令结果的命令；`web` 是长运行服务，不接受 `--json`：
 
 | 命令 | command flags |
 |---|---|
@@ -164,6 +169,7 @@ Locus 默认从 cwd 向父目录查找：
 | `resolve` | `--registry --from --vantage --capability` |
 | `probe` | `--registry --from --vantage --timeout` |
 | `status` | `--registry --vantage` |
+| `web` | `--registry --from --vantage --address` |
 
 无意义的 flag 作为 unknown flag 拒绝，不能静默忽略。
 

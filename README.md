@@ -133,6 +133,14 @@ object: <canonical Entity declaration>
 
 `status` 是详细 diagnostics。Link status 读取指定 vantage 的持久化 Observation；Route status 每次从 constituent Link observations 动态聚合。`resolve` 已包含 evidence 时，正常用户不需要额外调用 `status`。
 
+## Local Web Interface
+
+```text
+locus web --from workstation.dev-a --vantage office-lan
+```
+
+`web` 启动只监听本机回环地址的嵌入式 Vue 界面，使用与 CLI 相同的 Registry 和 Locus Core。当前入口提供 Graph、Status、Knowledge 三个导航视图及真实 Scope context；后续读取和 Probe 能力继续复用 Core，不通过子进程调用 CLI。
+
 ## Registry Discovery
 
 正常使用不需要 `--registry`。Locus 从当前工作目录向上寻找：
@@ -162,7 +170,7 @@ PowerShell 与 POSIX shell 的差异只影响可执行文件调用和 shell quot
 
 ## Command Flags
 
-`--json` 是所有命令可用的 presentation flag。其余 flags 只出现在语义需要它的命令中；无意义 flag 会被拒绝。
+`--json` 适用于返回结构化结果的命令；长运行的 `web` 不接受 `--json`。其余 flags 只出现在语义需要它的命令中；无意义 flag 会被拒绝。
 
 | 命令 | 允许的 command flags |
 |---|---|
@@ -174,6 +182,7 @@ PowerShell 与 POSIX shell 的差异只影响可执行文件调用和 shell quot
 | `resolve` | `--registry --from --vantage --capability` |
 | `probe` | `--registry --from --vantage --timeout` |
 | `status` | `--registry --vantage` |
+| `web` | `--registry --from --vantage --address` |
 
 例如 `locus validate --vantage office-lan` 会作为 unknown flag 拒绝，而不是接受后忽略。
 

@@ -47,6 +47,7 @@
 ## Verified Implementation Baseline
 
 - Go module，单一 `locus` executable；Cobra adapter 位于 `internal/cli/`，领域模型、Resolver、Provider 和 Store 位于 `internal/locus/`。
+- 本机 Web 入口位于 `internal/web/`，通过 `locus web` 启动 loopback HTTP server；Vue/Vite 资源编译后嵌入同一 executable，初始 Context API 使用 Core 的 Registry discovery 和 vantage 规则。
 - Project 可以按本地路径 import Environment，alias 归一化到 `<scope-id>::<local-id>` canonical identity。
 - 已实现 FRP、SSH、Salt Provider：Validate、Render NativeHint、safe Probe；无通用 Execute。
 - FRP Probe 使用 `frpc verify` 和现有本地 endpoint；SSH Probe 使用 TCP 与 `ssh -G`；Salt Probe 只调用 `test.ping`。
