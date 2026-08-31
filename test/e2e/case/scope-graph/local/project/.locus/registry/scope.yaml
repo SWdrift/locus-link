@@ -1,0 +1,12 @@
+api_version: locus/v1
+scope_id: project.scope-e2e
+imports:
+  user:
+    scope_id: user.scope-e2e
+    source:
+      kind: directory
+      uri: ${LOCUS_HOME}/registry
+  customer: ../../../customer/registry
+  shared-again: ../../../shared/registry
+bindings:
+  shared-host: customer::platform::shared::host.shared

@@ -1,0 +1,4 @@
+api_version: locus/v1
+scope_id: shared.scope-e2e
+imports:
+  project-back: ../../project/.locus/registry

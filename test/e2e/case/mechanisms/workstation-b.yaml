@@ -1,4 +1,4 @@
-api_version: locus/v0
+api_version: locus/v1
 bindings:
   link.prod-frp:
     executable: "{{FRPC_EXECUTABLE_B}}"

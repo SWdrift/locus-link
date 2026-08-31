@@ -1,0 +1,8 @@
+api_version: locus/v1
+scope_id: remote.failure-root
+imports:
+  unavailable:
+    scope_id: remote.unavailable
+    source:
+      kind: url
+      uri: {{FAIL_URL}}

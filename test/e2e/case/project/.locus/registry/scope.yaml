@@ -1,10 +1,7 @@
-api_version: locus/v0
-scope:
-  id: {{PROJECT_ID}}
-  kind: project
+api_version: locus/v1
+scope_id: {{PROJECT_ID}}
 imports:
-  - alias: customer
-    path: ../../../../environments/customer-a/.locus/registry
+  customer: ../../../../environments/customer-a/.locus/registry
 bindings:
   production-host: customer::host.prod-01
   edge-gateway: customer::gateway.edge

@@ -22,8 +22,9 @@ try {
     $env:GOMODCACHE = Join-Path $repo 'temp/.go-mod-cache'
     $env:GOPATH = Join-Path $repo 'temp/.go-path'
     Set-Location $repo
+    Remove-Item -LiteralPath (Join-Path $repo 'temp/e2e-run') -Recurse -Force -ErrorAction SilentlyContinue
 
-    & $goExecutable test ./test -run '^TestWorkspaceEndToEnd$' -v
+    & $goExecutable test ./test -run 'EndToEnd$' -v
     $exitCode = $LASTEXITCODE
     if ($exitCode -eq 0) {
         Write-Host "Artifacts retained at $(Join-Path $repo 'temp/e2e-run')"

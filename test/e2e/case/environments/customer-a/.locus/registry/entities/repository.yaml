@@ -1,4 +1,4 @@
-api_version: locus/v0
+api_version: locus/v1
 type: entity
 id: repository.platform
 kind: repository

@@ -24,7 +24,7 @@ import (
 
 func TestWorkspaceEndToEnd(t *testing.T) {
 	repository := repositoryRoot(t)
-	root := filepath.Join(repository, "temp", "e2e-run")
+	root := filepath.Join(repository, "temp", "e2e-run", "native")
 	if err := os.RemoveAll(root); err != nil {
 		t.Fatal(err)
 	}
@@ -77,12 +77,13 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	env := append(os.Environ(),
 		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"LOCUS_STATE_PATH="+statePath,
+		"LOCUS_HOME="+filepath.Join(root, "home"),
 		"LOCUS_SIM_ROOT="+deviceA,
 		"LOCUS_SIM_LOG="+probeLog,
 	)
 
-	initResult := runCLI(t, locusExe, projectB, env, "init", "--scope-kind", "project", "--scope-id", "project.beta", "--registry", projectBRegistry, "--json")
-	assertStringAt(t, initResult, "scope", "id", "project.beta")
+	initResult := runCLI(t, locusExe, projectB, env, "init", "--scope-id", "project.beta", "--registry", projectBRegistry, "--json")
+	assertStringAt(t, initResult, "scope_id", "project.beta")
 	materializeProject(t, caseRoot, projectB, "project.beta", "workstation.dev-b", port)
 
 	runtimeArgs := []string{"--from", "workstation.dev-a", "--vantage", "office-lan", "--mechanism-bindings", bindingAPath, "--json"}
@@ -96,8 +97,8 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	assertBoolAt(t, nestedValidation, "valid", true)
 
 	contextResult := runCLI(t, locusExe, projectA, env, append([]string{"context"}, runtimeArgs...)...)
-	assertStringAt(t, contextResult, "active_scope", "id", "project.alpha")
-	assertStringAt(t, contextResult, "bindings", "production-host", "environment.customer-a::host.prod-01")
+	assertStringAt(t, contextResult, "active_scope", "project.alpha")
+	assertStringAt(t, contextResult, "bindings", "project.alpha::production-host", "target", "environment.customer-a::host.prod-01")
 	assertStringAt(t, contextResult, "runtime", "current_entity", "project.alpha::workstation.dev-a")
 	assertStringAt(t, contextResult, "runtime", "vantage", "office-lan")
 	assertStringAt(t, contextResult, "runtime", "mechanism_bindings_source", bindingAPath)
@@ -117,7 +118,7 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	assertStringAt(t, target, "input_ref", "production-host")
 	assertStringAt(t, target, "ref_type", "binding")
 	assertStringAt(t, target, "canonical_target", "environment.customer-a::host.prod-01")
-	assertStringAt(t, target, "object", "canonical_id", "environment.customer-a::host.prod-01")
+	assertStringAt(t, target, "target_object", "canonical_id", "environment.customer-a::host.prod-01")
 	assertNoRuntimeEvidence(t, target)
 	frpLink := runCLI(t, locusExe, projectA, env, "show", "link.prod-frp", "--json")
 	assertStringAt(t, frpLink, "ref_type", "link")
@@ -231,8 +232,8 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 
 	betaArgs := []string{"--from", "workstation.dev-b", "--vantage", "device-b", "--mechanism-bindings", bindingBPath, "--json"}
 	betaContext := runCLI(t, locusExe, projectB, env, append([]string{"context"}, betaArgs...)...)
-	assertStringAt(t, betaContext, "active_scope", "id", "project.beta")
-	assertStringAt(t, betaContext, "bindings", "production-host", "environment.customer-a::host.prod-01")
+	assertStringAt(t, betaContext, "active_scope", "project.beta")
+	assertStringAt(t, betaContext, "bindings", "project.beta::production-host", "target", "environment.customer-a::host.prod-01")
 	assertStringAt(t, betaContext, "runtime", "vantage", "device-b")
 	betaResolve := runCLI(t, locusExe, projectB, env, append([]string{"resolve", "production-host", "--capability", "shell"}, betaArgs...)...)
 	assertStringAt(t, betaResolve, "canonical_target", "environment.customer-a::host.prod-01")
@@ -280,7 +281,7 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	assertStringAt(t, unresolved, "status", "unresolved")
 
 	duplicateRoute := filepath.Join(projectARegistry, "routes", "alternate-shell.yaml")
-	mustWrite(t, duplicateRoute, "api_version: locus/v0\ntype: route\nid: route.alternate-shell\nsteps:\n  - link: link.prod-frp\n  - link: link.prod-ssh\n")
+	mustWrite(t, duplicateRoute, "api_version: locus/v1\ntype: route\nid: route.alternate-shell\nsteps:\n  - link: link.prod-frp\n  - link: link.prod-ssh\n")
 	ambiguous := runCLIExpectExitJSON(t, locusExe, projectA, env, 3, resolveArgs...)
 	assertStringAt(t, ambiguous, "status", "ambiguous")
 	assertCandidateRoutes(t, ambiguous["candidates"], "project.alpha::route.alternate-shell", "project.alpha::route.prod-shell")
@@ -705,7 +706,7 @@ func assertImport(t *testing.T, value any, alias, scopeID string) {
 		t.Fatalf("expected one import, got %#v", value)
 	}
 	item, ok := imports[0].(map[string]any)
-	if !ok || item["alias"] != alias || item["scope_id"] != scopeID {
+	if !ok || item["alias"] != alias || item["target_scope_id"] != scopeID {
 		t.Fatalf("expected import %s -> %s, got %#v", alias, scopeID, value)
 	}
 }

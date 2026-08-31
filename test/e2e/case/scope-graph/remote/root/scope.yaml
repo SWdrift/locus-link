@@ -1,0 +1,14 @@
+api_version: locus/v1
+scope_id: remote.root
+imports:
+  git-source:
+    scope_id: remote.git
+    source:
+      kind: git
+      uri: {{GIT_URI}}
+      revision: main
+  url-source:
+    scope_id: remote.url
+    source:
+      kind: url
+      uri: {{URL_URI}}

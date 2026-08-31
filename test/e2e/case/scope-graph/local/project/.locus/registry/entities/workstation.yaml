@@ -1,0 +1,5 @@
+api_version: locus/v1
+type: entity
+id: workstation
+kind: workstation
+name: Scope E2E Workstation

@@ -1,0 +1,5 @@
+api_version: locus/v1
+type: route
+id: shared-shell-route
+steps:
+  - link: shared-shell

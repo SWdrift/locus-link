@@ -1,0 +1,4 @@
+api_version: locus/v1
+scope_id: customer.scope-e2e
+imports:
+  platform: ../../platform/registry

@@ -1,0 +1,5 @@
+api_version: locus/v1
+type: entity
+id: host.shared
+kind: host
+name: Shared Host

@@ -1,0 +1,5 @@
+api_version: locus/v1
+type: entity
+id: url-v1
+kind: service
+name: URL V1

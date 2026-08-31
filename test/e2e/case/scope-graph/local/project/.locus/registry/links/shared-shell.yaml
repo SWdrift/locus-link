@@ -1,0 +1,12 @@
+api_version: locus/v1
+type: link
+id: shared-shell
+from: workstation
+to: customer::platform::shared::host.shared
+provider: ssh
+provides:
+  - shell
+provider_data:
+  user: root
+  host: 127.0.0.1
+  port: {{PORT}}
