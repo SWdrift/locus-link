@@ -5,4 +5,5 @@ test/**/__pycache__/
 temp
 .VSCodeCounter
 internal/web/ui/node_modules/
+node_modules/
 internal/web/ui/*.tsbuildinfo

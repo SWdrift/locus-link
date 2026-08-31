@@ -15,5 +15,6 @@
 - End-to-end fixtures 可以使用 `temp/` 下的目录来模拟项目、环境和设备。
 - 当完整流程测试暴露 Scope、注册机制或模型缺陷时，必须更新实现或设计，并重新运行完整流程。
 - 第一个 vertical slice 最多进行三轮完整的实现/测试迭代。
+- 日常修改或新增 Markdown 文档后，必须运行 `pnpm --dir .tools/markdown run check:links`，校验仓库内本地文件链接与标题锚点。
 
 
