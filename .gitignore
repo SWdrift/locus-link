@@ -4,6 +4,4 @@ test/**/__pycache__/
 .kanban
 temp
 .VSCodeCounter
-internal/web/ui/node_modules/
 node_modules/
-internal/web/ui/*.tsbuildinfo
