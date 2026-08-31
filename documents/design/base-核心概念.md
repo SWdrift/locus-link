@@ -48,48 +48,6 @@ flowchart LR
 
 上述过程中的名词统一定义如下，后面的数据库示例只负责展示它们怎样一起工作。
 
-## Graph 的三种解释模式
-
-Graph 是 locus-link 长期的第一性结构：它表达已经登记的 operational possibilities，并允许 Core 在不改写声明的前提下，按当前现场和一次具体选择逐层专化。Possibility、Mechanism、Instance 是同一 operational knowledge lineage 的三种解释模式，不要求在实现中建立三个 Graph 类型，也不维护三份持久 truth source。
-
-```text
-Possibility Graph
-      ↓ resolve / refinement
-Mechanism view
-      ↓ instantiate / specialization
-Instance view
-```
-
-### Possibility
-
-```text
-Possibility Graph = Graph(Declared View)
-```
-
-Possibility Graph 由声明中的 Entity 节点和 Link 关系确定。Scope、Binding 与 Source provenance 提供解释上下文；Route 是对已有 Link 的显式线性 composition overlay。workstation、Profile、vantage 和 Observation 不增加、删除或覆盖这一层的节点与关系，因此同一 Declared View 在不同现场得到相同的 Possibility Graph。
-
-### Mechanism
-
-```text
-Mechanism view
-= Possibility Graph
-+ Situated Context
-+ resolved Provider bindings
-+ applicable Observation overlay
-```
-
-Mechanism view 表达当前 actor、current entity、vantage 和 provider environment 下，哪些已声明 Link 具有可解释的具体 mechanism，以及适用证据能证明到什么程度。它是按需派生的 refinement：Provider availability 或 Observation 变化只改变本次解释，不反向修改 Possibility Graph，也不形成第二份持久图。
-
-当前 v0 的 Resolve 只实现这一模式的有限投影：它消费显式 Route，不执行自动寻路或一般 Graph planning。
-
-### Instance
-
-Instance view 是未来对已选 mechanism 的一次具体 specialization，可以产生 invocation、ephemeral endpoint、temporary binding 和 runtime output。派生元素可以不是原始节点或 Link 的结构子集，但必须保留到 Declaration、Link 与 Source revision 的 provenance。
-
-当前没有 Instance schema、Store、Planner 或 Executor；Plan、Execute、Supervise 和 Teardown 仍保持冻结。这里仅固定演进方向，避免未来执行实例被错误写回 Declaration 或 Observation。
-
-三种模式之间的“包含”表示表达能力和可追溯范围逐层专化，不表示节点或边的普通集合包含。长期不变量是：声明 Graph 可以表达比当前 Resolver 能处理的内容更多，当前执行能力不反向限制知识模型。
-
 ## 名词表
 
 ### 声明知识
@@ -236,8 +194,51 @@ Declaration 和 Observation 分开保存：
 
 Resolve 返回 Documentation Reference 后，Agent 可以按需读取数据库操作、迁移或排障文档；Route 的机器判断仍以结构化 Declaration 为准。
 
+## Graph 的三种解释模式
+
+Graph 是 locus-link 长期的第一性结构：它表达已经登记的 operational possibilities，并允许 Core 在不改写声明的前提下，按当前现场和一次具体选择逐层专化。Possibility、Mechanism、Instance 是同一 operational knowledge lineage 的三种解释模式，不要求在实现中建立三个 Graph 类型，也不维护三份持久 truth source。
+
+```text
+Possibility Graph
+      ↓ resolve / refinement
+Mechanism view
+      ↓ instantiate / specialization
+Instance view
+```
+
+### Possibility
+
+```text
+Possibility Graph = Graph(Declared View)
+```
+
+Possibility Graph 由声明中的 Entity 节点和 Link 关系确定。Scope、Binding 与 Source provenance 提供解释上下文；Route 是对已有 Link 的显式线性 composition overlay。workstation、Profile、vantage 和 Observation 不增加、删除或覆盖这一层的节点与关系，因此同一 Declared View 在不同现场得到相同的 Possibility Graph。
+
+### Mechanism
+
+```text
+Mechanism view
+= Possibility Graph
++ Situated Context
++ resolved Provider bindings
++ applicable Observation overlay
+```
+
+Mechanism view 表达当前 actor、current entity、vantage 和 provider environment 下，哪些已声明 Link 具有可解释的具体 mechanism，以及适用证据能证明到什么程度。它是按需派生的 refinement：Provider availability 或 Observation 变化只改变本次解释，不反向修改 Possibility Graph，也不形成第二份持久图。
+
+当前 v0 的 Resolve 只实现这一模式的有限投影：它消费显式 Route，不执行自动寻路或一般 Graph planning。
+
+### Instance
+
+Instance view 是未来对已选 mechanism 的一次具体 specialization，可以产生 invocation、ephemeral endpoint、temporary binding 和 runtime output。派生元素可以不是原始节点或 Link 的结构子集，但必须保留到 Declaration、Link 与 Source revision 的 provenance。
+
+当前没有 Instance schema、Store、Planner 或 Executor；Plan、Execute、Supervise 和 Teardown 仍保持冻结。这里仅固定演进方向，避免未来执行实例被错误写回 Declaration 或 Observation。
+
+三种模式之间的“包含”表示表达能力和可追溯范围逐层专化，不表示节点或边的普通集合包含。长期不变量是：声明 Graph 可以表达比当前 Resolver 能处理的内容更多，当前执行能力不反向限制知识模型。
+
 ## 演进边界
 
 Plan、Instance、Execute、Supervise 和 Teardown 当前冻结。只有数据库或 Gitea E2E 证明 Agent 使用既有 native/MCP capability 仍缺少必要的现场语义时，才重新评估对应设计。
 
 > 新增抽象必须由真实路径证明，并保持显式、可解释和 provider-native。
+
