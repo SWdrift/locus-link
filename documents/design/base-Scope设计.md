@@ -6,7 +6,7 @@ Scope 是 locus-link 收集和组合声明知识的基本节点。每个 Scope �
 
 项目、用户和远程环境使用同一种 Scope/Registry 结构。它们通过显式 import 组成可递归收集的图；调用方从一个根 Scope 出发，获得已成功加载的 transitive closure。Source、alias、缓存路径和导入链均不改变 Scope 或其内部对象的 canonical identity。
 
-现行 `locus/v0` 仍只实现 embedded Registry、一层相对目录 import 和向上发现。本文定义目标模型；公共 YAML、CLI 或 JSON 契约的变化必须显式升级或迁移。
+现行实现已 clean cutover 到 `locus/v1`：递归显式 import、用户根、项目反向登记、remote cache、显式 refresh、partial diagnostics 与统一引用解析均进入公共契约，不提供 `locus/v0` 兼容路径。
 
 ## 职责
 

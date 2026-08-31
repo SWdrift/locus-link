@@ -23,7 +23,7 @@
 
 ## 管理规则
 
-- 项目与产品名称统一写作 `locus-link`；`locus` 仅用于 executable、`locus/v0`、`locus://` 和 `locus.*` 协议标识；“用户级 Locus”专指本文定义的用户根入口与本机状态边界。
+- 项目与产品名称统一写作 `locus-link`；`locus` 仅用于 executable、`locus/v1`、`locus://` 和 `locus.*` 协议标识；“用户级 Locus”专指本文定义的用户根入口与本机状态边界。
 - 公共 YAML、CLI、HTTP API 和 JSON 的破坏性变化必须显式版本化或迁移。
 - Go API、SQLite schema 和内部组件拆分不是公共兼容承诺。
 - 同一规则只在一份权威文档中完整定义，其他文档使用链接。

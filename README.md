@@ -36,10 +36,14 @@ resolve → probe（需要时）→ resolve
 |---|---|
 | `locus resolve <target> --capability <name>` | 解析匹配的显式 Route 和当前 evidence |
 | `locus probe <link-or-route-id>` | 安全探测 Link 或 Route |
-| `locus context` | 查看当前 Scope、imports、Binding、actor 和 vantage |
+| `locus context` | 查看根来源、Scope imports、Binding、Source cache、actor 和 vantage |
+| `locus graph` | 查看递归 Scope 图、provenance、声明和 partial diagnostics |
 | `locus show <ref-or-id>` | 查看声明对象和引用解析 |
-| `locus list [entity\|link\|route]` | 列出 Registry 声明 |
+| `locus list [binding\|entity\|link\|route]` | 列出 Registry 声明 |
 | `locus status [link-or-route-id]` | 查看详细 evidence |
+| `locus init --scope-id <id>` / `locus user init --scope-id <id>` | 创建项目或用户 Registry |
+| `locus project register\|unregister\|list` | 管理项目反向登记 |
+| `locus refresh [alias-path]` | 显式获取、校验并激活 remote Source |
 | `locus web` | 启动仅监听本机回环地址的 Web UI |
 
 完整 flags、输出、退出码和副作用见 [CLI 公共契约](documents/design/contracts/CLI契约.md)；Web HTTP 接口和安全边界见[本机 Web 契约](documents/design/contracts/Web契约.md)。
@@ -49,13 +53,13 @@ resolve → probe（需要时）→ resolve
 创建并校验 Registry：
 
 ```text
-locus init --scope-kind project --scope-id project.example
+locus init --scope-id project.example --import-user user --register
 locus validate
 ```
 
-`locus` 默认从当前目录向上寻找 `.locus/registry/scope.yaml`；`--registry` 用于 override、automation、tests 和特殊多 Registry 场景。
+`locus` 默认从当前目录向上寻找 `.locus/registry/scope.yaml`；找不到项目 Registry 时使用 `${LOCUS_HOME}/registry` 用户根。`--registry` 用于 override、automation、tests 和特殊多 Registry 场景。
 
-Registry 使用 YAML 声明 Scope、Import、Binding、Entity、Link 和人工排序的 Route。完整 schema、identity、引用规则和 Provider data 见[声明 YAML 公共契约](documents/design/contracts/声明契约.md)。
+Registry 使用严格 `locus/v1` YAML 声明 Scope、Import、Binding、Entity、Link 和人工排序的 Route。Import 可递归指向 directory、Git 或 ZIP URL Source；普通读取只使用已激活 remote cache，网络获取仅由 `refresh` 触发。完整 schema、identity、引用规则和 Provider data 见[声明 YAML 公共契约](documents/design/contracts/声明契约.md)。
 
 ## Build and Verification
 
@@ -69,7 +73,7 @@ PowerShell：
 ./scripts/verify.ps1
 ```
 
-`build.ps1` 将 CLI 构建到 `temp/bin/locus.exe`；`test-e2e.ps1` 只运行 workspace E2E；`verify.ps1` 依次运行完整 Go 测试（含 E2E）、Web UI 构建和 Markdown 链接检查。脚本使用的 cache 和测试状态均保留在仓库 `temp/` 下。
+`build.ps1` 将 CLI 构建到 `temp/bin/locus.exe`；`test-e2e.ps1` 运行 native workspace 与 Scope graph 两个 E2E；`verify.ps1` 依次运行完整 Go 测试（含 E2E）、Web UI 构建和 Markdown 链接检查。脚本使用的 cache 和测试状态均保留在仓库 `temp/` 下。
 
 POSIX shell：
 
@@ -79,7 +83,7 @@ go build -o temp/bin/locus ./cmd/locus
 go test ./...
 ```
 
-E2E declarations 和 simulated device state 位于 `test/e2e/case/`；完整运行产物保留在 `temp/e2e-run/`。
+E2E declarations 和 simulated device state 位于 `test/e2e/case/`；native 与 Scope graph 完整运行产物分别保留在 `temp/e2e-run/native/` 和 `temp/e2e-run/scope/`。
 
 Windows 可直接启动保留案例的 Web UI：
 

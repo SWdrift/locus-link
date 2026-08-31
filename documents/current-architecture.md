@@ -34,41 +34,50 @@ flowchart LR
 
 ## 2. 声明与存储布局
 
-### 2.1 Registry 目录
+### 2.1 Registry 与用户级 Locus
 
 ```text
-.locus/registry/
+.locus/registry/                    # 项目根
 ├── scope.yaml
 ├── entities/*.yaml
 ├── links/*.yaml
 ├── routes/*.yaml
-└── docs/                 # init 会创建；当前加载器不读取
+└── docs/
+
+${LOCUS_HOME}/
+├── registry/                       # 用户根 Scope
+└── cache/
+    ├── candidates/                 # 临时获取目录
+    └── objects/<content-digest>/   # 已校验 immutable Registry
 ```
 
-- 未显式传入 `--registry` 时，从当前工作目录逐级向上查找 `.locus/registry/scope.yaml`。
-- `scope.yaml` 必须声明 `api_version: locus/v0`，Scope `kind` 只接受 `project` 或 `environment`。
-- 对象文件只读取上述三个一级目录中的 `.yaml`/`.yml` 普通文件，不递归目录；每个文件只允许一个 YAML document。
-- YAML 解码拒绝未知字段、重复 key 和多 document。当前没有独立 JSON Schema；Go struct 与严格 YAML 解码器构成实际可执行 schema。
-- Entity 目前承载 `id/kind/name/labels/documentation`；Link 承载 `from/to/provider/requires/provides/provider_data/documentation`；Route 仅含有序 Link steps 与 `documentation`。`provider_data` 是 Provider 自行解释的开放 map。
-- 对象也有 `api_version` 字段，但当前加载器没有校验其值；`type` 必须能分派为 `entity`、`link` 或 `route`。
+- `scope.yaml` 与对象声明严格使用 `api_version: locus/v1`；`scope_id` 直接位于 manifest 顶层，不存在 `scope.kind`。
+- 未显式传入 `--registry` 时，先从当前目录向上寻找项目 `.locus/registry/scope.yaml`；找不到时使用 `${LOCUS_HOME}/registry`。
+- `LOCUS_STATE_PATH` SQLite 保存 Observation、项目反向登记、remote edge active cache 和 Scope authority。登记信息不会向用户根合并声明。
+- 对象目录只读取一级 `.yaml`/`.yml` 普通文件；每个文件只允许一个 YAML document。未知字段、重复 key、多 document、错误 `api_version` 和同 Scope local ID 冲突均被拒绝。
+- Scope content digest 覆盖排序后的 registry-relative path、长度与文件 bytes，包括 manifest、声明和 docs，排除 Git metadata 与 cache metadata。
 
 ### 2.2 Scope、Import、Binding 与身份
 
-- 规范身份固定为 `<scope-id>::<local-id>`。同一 Scope 内 Entity、Link、Route 共用 local ID 名字空间，重复即加载失败；不同 Scope 可复用 local ID。
-- 不带 `::` 的引用按声明对象所在 Scope 解析；`alias::local-id` 先映射到导入 Scope；已经是规范 ID 的引用也可直接解析。
-- 活跃 `project` Scope 可以导入一个或多个 `environment` Scope。相对 import path 以活跃 Registry 根目录为基准；alias 和 Scope ID 都必须唯一。
-- 当前 import 是一层对象加载：读取导入 Scope 的 manifest 以及其 `entities/links/routes`，不继续处理导入 manifest 的 imports 或 bindings。活跃 Scope 为 `environment` 时不允许 imports。
-- Binding 只来自活跃 manifest，格式为 `role: entity-ref`；加载时解析并保存为规范 Entity ID。`ResolveEntity` 和 `show` 优先把输入当 Binding，再按 Entity 引用解析。
-- Link 的 `from/to` 与 Route step 的 Link 引用在加载校验时改写为规范 ID。
-- 加载校验确认引用存在、Link 有 Provider、Route 非空，并按 step 顺序检查每个 Link 的 `requires` 是否已由更早 step 的 `provides` 提供。当前不校验相邻 step 的 `to/from` 连通性。
-- `documentation` 当前只是 Entity、Link、Route 输出中的静态 `{ref,title}` 元数据；没有扫描 `docs/`、解析文档内容或按上下文发现文档的实现。
+- 规范身份固定为 `<scope-id>::<local-id>`。Binding、Entity、Link、Route 在 owning Scope 内共用 local ID 名字空间。
+- Import 是 alias map；scalar directory/Git/URL locator 或带 expected `scope_id` 的结构化 Source 均归一化到 `directory|git|url`。
+- Collector 递归处理显式 import graph，按 `scope_id` 与 content digest 去重并保留全部 alias paths。回边只阻断当前 edge；缺 cache、Source 失败、identity 冲突和 authority 冲突产生稳定 `blocked_imports`，其余已验证节点组成 partial Declared View。
+- 引用解析统一支持根 Scope local ID、任意长度 `alias::...::local-id` 和 canonical ID。Binding 是 owning Scope declaration；裸 role 只在根 Scope 解析。
+- Link 的 `from/to` 与 Route step 在加载校验时规范化。Route 必须非空，并按 step 顺序验证 capability fold；当前不要求相邻 step 的 `to/from` 连通。
+- documentation reference 必须解析后仍位于 owning Registry 的 `docs/`；Graph 和 Knowledge projection 使用稳定 document identity。
 
-### 2.3 Workstation-local mechanism bindings
+### 2.3 Remote Source 与显式 refresh
 
-`context`、`resolve`、`probe`、`status` 和 `web` 可通过 `--mechanism-bindings <path>` 装载 Registry 外的严格 `locus/v0` YAML。文件按 Link reference 覆盖 executable 和 `provider_data`；原始 Link、Route、Binding、capability、Graph 与 canonical identity 不变。空 binding、非 Link 引用、未知字段、重复 key 和多 document 被拒绝。
+- 普通 `graph/list/show/context/resolve/status/probe` 只读取 directory Source 与已激活 immutable remote object，不执行 Git、HTTP 或其他隐式 fetch。
+- `locus refresh [alias-path]` 是唯一 remote 获取入口。Git revision 解析为 commit；URL 仅接受受大小、entry 数、路径穿越和 symlink 限制的 ZIP Registry。
+- Candidate 通过严格 Registry、expected/actual `scope_id`、declaration 和 docs containment 校验后，移动到 `<home>/cache/objects/<digest>`。
+- edge cache 与 Scope authority 在单个 SQLite transaction 中激活。失败 candidate 不修改 active pointer；已有 cache 时结果报告 retained revision/digest，首次失败保持 blocked。
+
+### 2.4 Workstation-local mechanism bindings
+
+`context`、`resolve`、`probe`、`status` 和 `web` 可通过 `--mechanism-bindings <path>` 装载 Registry 外的严格 `locus/v1` YAML。文件按 Link reference 覆盖 executable 和 `provider_data`；原始 Link、Route、Binding、capability、Graph 与 canonical identity 不变。空 binding、非 Link 引用、未知字段、重复 key 和多 document 被拒绝。
 
 CLI 的 Runtime Context builder 统一解析 current Entity、vantage 与该 binding 文件。Resolve/Probe/Status 使用覆盖后的 effective Link；`show`、Graph 和静态 Registry validation 仍只读取声明。
-
 
 ## 3. 当前 Resolve
 
@@ -170,47 +179,25 @@ stateDiagram-v2
 
 ## 7. 当前 E2E 基线
 
-唯一 workspace E2E 是 `TestWorkspaceEndToEnd`，由 `scripts/test-e2e.ps1` 运行；测试重建 `temp/e2e-run/`，结束后保留二进制、具现化 Registry、SQLite 和 probe log。
+`scripts/test-e2e.ps1` 运行全部 `*EndToEnd` 测试，并分别保留：
 
-当前 case 包含：
+- `temp/e2e-run/native/`：原有 workspace、Provider helper、mechanism binding、Observation、Web API/UI 联调产物；
+- `temp/e2e-run/scope/`：用户/项目/多层本地 Scope 图、remote cache、Git/URL helper、SQLite authority 与 refresh 产物。
 
-- 两个具现化 project（alpha、beta），各自导入同一个 `environment.customer-a`；
-- workstation、host、FRP server 三类 Entity；
-- `frp-stcp + ssh` 两步 Shell Route，以及单步 Salt Route；
-- Environment host 与 Project Link/Route 关联的两份 Scope 文档；
-- 工作区内的默认 `frpc/ssh/salt` 模拟 executable、两套 workstation-local FRP/SSH mechanism binding 文件和真实本地 TCP listener。
+`TestWorkspaceEndToEnd` 覆盖两个 Project 导入同一个 customer Scope、严格 CLI、向上发现、Resolve 不触发 Probe、FRP/SSH/Salt success/failure/recovery、Observation applicability、mechanism binding 隔离、Knowledge 和真实 Web 子进程。
 
-E2E 已覆盖 `init`、严格命令参数、Registry 向上发现、validate、context、list、show；证明 Resolve 不触发 Probe；证明 Shell Route 的 FRP/SSH 顺序 Probe、直接 Link Probe、Salt success/failure/recovery、SQLite 追加计数、完整 Observation provenance、Status/Resolve applicability、不同 vantage 隔离，以及 unresolved/ambiguous 与“不按 evidence 排名”。
-
-同一 Registry 的 dual-workstation slice 证明两套 local binding 得到相同 canonical target、Binding、Link/Route identity、capability 与 documentation，但 NativeHint executable 可以不同；A binding 的 Probe success 在 B binding 下保持 `unknown`。
-
-同一 E2E 还启动真实 `locus web` 子进程，复用上述 Registry、helper 与 Store，覆盖 Context、Graph、Status、Knowledge、Resolve、Probe failure/recovery、vantage 隔离、文档去重/路径边界、Provider data/Secret 不泄漏和嵌入式 UI 入口。实际浏览器已验证 Graph、Status、Knowledge、Resolve、Probe、中英文与主题切换，以及 `360px`、`768px`、`1280px`、`1440px` 下无页面级横向溢出；手机表格只在自身容器内滚动。
+`TestScopeGraphEndToEnd` 覆盖用户根与项目根选择、项目反向登记不 merge、显式用户 import、长 alias path、同 digest 多路径去重、回边 partial、partial Resolve、已加载 Link Probe，以及 remote 首次无 cache、显式 Git/URL refresh、普通命令零 fetch、更新前保留旧 revision、刷新切换、失败回退和首次失败 blocked。
 
 ## 8. 公共契约符合度
 
-当前 CLI、Web JSON 与声明公共契约没有已知的可观察行为偏差；后续发现偏差时在此记录，并同步契约与 E2E 基线。
-
-### 目标设计偏差
-
-下列差异不是现行 `locus/v0` 公共契约违约，但会违反已收束的目标不变量，实施迁移时必须修复：
-
-| 目标不变量 | 当前实现 | 风险 |
-|---|---|---|
-| Declared View 支持递归显式 import graph、按 `scope_id` 去重和回边阻断 | loader 当前只装载 active Project 的一层 Environment imports | 多层显式依赖、alias path、partial diagnostics 和回环处理不可用 |
-| 支持 directory、Git、URL Registry Source 及 immutable provenance | 当前只有 embedded/相对目录，Source digest 只覆盖单个声明文件 | 无法缓存、刷新或诊断 remote 内容变化 |
-| 用户级 Locus 提供用户根 Scope、项目反向登记和 remote cache | 当前只有 cwd 向上发现和 Observation SQLite | 项目外没有用户根入口，项目与用户无法双向发现 |
-
-当前只有 embedded discovery，不存在用户登记表或 remote cache；项目与用户 Scope 的显式双向记录尚未实现。
+当前声明和 CLI 已 clean cutover 到 `locus/v1`；不解析 `locus/v0`、`scope.kind`、list imports 或 `--scope-kind`。CLI、Web JSON 与声明公共契约没有已知的可观察行为偏差；后续发现偏差时在此记录，并同步契约与 E2E 基线。
 
 ## 9. 明确未实现
 
-以下能力在当前 Go model、CLI wiring、Provider registry 和 E2E case 中均无实现：
+以下能力仍不在当前 Go model、CLI wiring、Provider registry 和 E2E case 中：
 
-- 用户根 Scope、项目反向登记、递归 import graph、alias/去重/回边阻断与 partial diagnostics；
-- directory/Git/URL Source、remote cache、显式 refresh、resolved commit/content digest 与原子激活；
-- PostgreSQL Provider/binding 与声明/E2E；Gitea CI/CD 的声明、Route 与 E2E；
-- 未被声明引用的 `docs/` 自动扫描、全文索引或 documentation discovery；
-- 自动 Route discovery、路径搜索、候选 ranking；
-- Plan、Instance、Execute、Supervise 与通用执行器；这些能力当前属于明确冻结的 NON-GOAL，不是待补脚手架。
-
-因此，设计文档中的任何上述目标都不能视为当前实现能力；新增实现后应先更新本快照中的清单和 E2E 基线。
+- PostgreSQL Provider/binding；
+- Gitea CI/CD 专用声明和 Route；
+- 未被声明引用的 `docs/` 自动扫描、全文索引或隐式 documentation discovery；
+- 自动 Route discovery、路径搜索和候选 ranking；
+- Plan、Instance、Execute、Supervise 与通用执行器；这些能力属于明确冻结的 NON-GOAL，不是待补脚手架。
