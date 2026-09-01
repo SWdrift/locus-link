@@ -109,6 +109,7 @@ const { t } = useI18n()
   --el-menu-hover-bg-color: var(--surface-hover);
   --el-menu-active-color: var(--accent);
   --el-menu-text-color: var(--text-secondary);
+  --el-menu-base-level-padding: var(--locus-space-5);
   border: 0;
 }
 
@@ -211,6 +212,7 @@ const { t } = useI18n()
 
   .locus-navigation__menu {
     justify-content: stretch;
+    --el-menu-base-level-padding: var(--locus-space-3);
   }
 
   .locus-navigation__item,
