@@ -7,6 +7,7 @@
 - 完整验证：`.\scripts\verify.ps1`
 - Workspace E2E：`.\scripts\test-e2e.ps1`
 - Web 联调：分别在两个终端运行 `.\scripts\start-web-api.ps1` 和 `.\scripts\start-web-ui.ps1`。该方式跳过内嵌 Web UI 构建，适合快速验证 Web 端更改。
+- 使用 pwsh 而不是 powershell。
 
 ## 工作区安全
 
