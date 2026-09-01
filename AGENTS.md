@@ -23,4 +23,6 @@
 - 第一个 vertical slice 最多进行三轮完整的实现/测试迭代。
 - 日常修改或新增 Markdown 文档后，必须运行 `pnpm --dir .tools/markdown run check:links`，校验仓库内本地文件链接与标题锚点。
 
+## 格式化
 
+- internal\web\ui 可使用 `pnpm --dir internal\web\ui run format` 格式化。

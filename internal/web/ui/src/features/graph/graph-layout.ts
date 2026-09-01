@@ -16,11 +16,13 @@ export interface GraphLayout {
 
 const elk = new ELK({ workerFactory: () => new ELKWorker() })
 
-
 export async function layoutGraph(value: GraphView): Promise<GraphLayout> {
   const entities = [...value.entities].sort((left, right) => left.canonical_id.localeCompare(right.canonical_id))
   const links = [...value.links].sort((left, right) => left.canonical_id.localeCompare(right.canonical_id))
-  const fingerprint = JSON.stringify({ nodes: entities.map(item => item.canonical_id), edges: links.map(item => [item.canonical_id, item.from, item.to]) })
+  const fingerprint = JSON.stringify({
+    nodes: entities.map(item => item.canonical_id),
+    edges: links.map(item => [item.canonical_id, item.from, item.to]),
+  })
   const graph = await elk.layout({
     id: 'root',
     layoutOptions: {

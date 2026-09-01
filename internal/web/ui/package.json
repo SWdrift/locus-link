@@ -7,6 +7,7 @@
   "scripts": {
     "build": "pnpm run typecheck && vite build",
     "dev": "vite",
+    "format": "prettier --write . --ignore-unknown",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json"
   },
   "dependencies": {
@@ -30,6 +31,7 @@
     "@types/node": "^26.4.0",
     "@types/web-bluetooth": "^0.0.21",
     "@vitejs/plugin-vue": "^6.0.8",
+    "prettier": "^3.9.6",
     "typescript": "^6.0.3",
     "unplugin-auto-import": "^21.1.0",
     "unplugin-vue-components": "^32.1.0",

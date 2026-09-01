@@ -17,11 +17,15 @@ const sidebarCollapsed = ref(false)
 
 provideOperationalContext(operationalContext)
 
-watch(() => contextQuery.data.value, (value) => {
-  if (!value) return
-  if (!operationalContext.from) operationalContext.from = value.runtime.current_entity ?? ''
-  if (!operationalContext.vantage) operationalContext.vantage = value.runtime.vantage
-}, { immediate: true })
+watch(
+  () => contextQuery.data.value,
+  value => {
+    if (!value) return
+    if (!operationalContext.from) operationalContext.from = value.runtime.current_entity ?? ''
+    if (!operationalContext.vantage) operationalContext.vantage = value.runtime.vantage
+  },
+  { immediate: true },
+)
 
 const scopeName = computed(() => contextQuery.data.value?.active_scope.id ?? t('common.loading'))
 const connectionState = computed<'error' | 'valid' | 'local'>(() => {
@@ -42,10 +46,7 @@ const connectionText = computed(() => {
           class="locus-app__sidebar"
           :width="sidebarCollapsed ? 'var(--locus-sidebar-collapsed)' : 'var(--locus-sidebar-expanded)'"
         >
-          <AppNavigation
-            :collapsed="sidebarCollapsed"
-            @toggle="sidebarCollapsed = !sidebarCollapsed"
-          />
+          <AppNavigation :collapsed="sidebarCollapsed" @toggle="sidebarCollapsed = !sidebarCollapsed" />
         </ElAside>
 
         <ElContainer class="locus-app__stage">

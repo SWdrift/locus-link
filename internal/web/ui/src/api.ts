@@ -12,7 +12,7 @@ import type {
 async function requestJSON<T>(input: string, init?: RequestInit): Promise<T> {
   const response = await fetch(input, { headers: { Accept: 'application/json', ...init?.headers }, ...init })
   if (!response.ok) {
-    const body = await response.json().catch(() => ({ error: response.statusText })) as { error?: string }
+    const body = (await response.json().catch(() => ({ error: response.statusText }))) as { error?: string }
     throw new Error(body.error ?? response.statusText)
   }
   return response.json() as Promise<T>
@@ -35,8 +35,9 @@ export function resolveRoute(target: string, capability: string, from: string, v
   return requestJSON<ResolveResult>(`/api/v0/resolve?${query}`)
 }
 
-export const probe = (subject: string, from: string, vantage: string) => requestJSON<ProbeResult>('/api/v0/probes', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ subject, from, vantage, timeout_ms: 10_000 }),
-})
+export const probe = (subject: string, from: string, vantage: string) =>
+  requestJSON<ProbeResult>('/api/v0/probes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subject, from, vantage, timeout_ms: 10_000 }),
+  })

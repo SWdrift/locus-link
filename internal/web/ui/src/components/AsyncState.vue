@@ -2,24 +2,27 @@
 import { Loading, RefreshRight } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 
-withDefaults(defineProps<{
-  loading: boolean
-  error?: Error | null
-  empty?: boolean
-  emptyText?: string
-  loadingText?: string
-  retryable?: boolean
-  retrying?: boolean
-  skeleton?: 'app' | 'graph' | 'status' | 'knowledge' | 'document'
-}>(), {
-  error: null,
-  empty: false,
-  emptyText: '',
-  loadingText: '',
-  retryable: false,
-  retrying: false,
-  skeleton: 'app',
-})
+withDefaults(
+  defineProps<{
+    loading: boolean
+    error?: Error | null
+    empty?: boolean
+    emptyText?: string
+    loadingText?: string
+    retryable?: boolean
+    retrying?: boolean
+    skeleton?: 'app' | 'graph' | 'status' | 'knowledge' | 'document'
+  }>(),
+  {
+    error: null,
+    empty: false,
+    emptyText: '',
+    loadingText: '',
+    retryable: false,
+    retrying: false,
+    skeleton: 'app',
+  },
+)
 const emit = defineEmits<{ retry: [] }>()
 const { t } = useI18n()
 </script>
@@ -53,7 +56,10 @@ const { t } = useI18n()
           </div>
         </div>
 
-        <div v-else-if="skeleton === 'knowledge'" class="locus-async-state__workspace-skeleton locus-async-state__workspace-skeleton--knowledge">
+        <div
+          v-else-if="skeleton === 'knowledge'"
+          class="locus-async-state__workspace-skeleton locus-async-state__workspace-skeleton--knowledge"
+        >
           <div class="locus-async-state__index-skeleton">
             <ElSkeletonItem variant="rect" />
             <ElSkeletonItem v-for="index in 5" :key="index" variant="text" />
@@ -69,7 +75,10 @@ const { t } = useI18n()
           <ElSkeletonItem v-for="index in 8" :key="index" variant="text" />
         </div>
 
-        <div v-else-if="skeleton === 'graph'" class="locus-async-state__workspace-skeleton locus-async-state__workspace-skeleton--graph">
+        <div
+          v-else-if="skeleton === 'graph'"
+          class="locus-async-state__workspace-skeleton locus-async-state__workspace-skeleton--graph"
+        >
           <ElSkeletonItem class="locus-async-state__canvas-skeleton" variant="rect" />
           <div class="locus-async-state__inspector-skeleton">
             <ElSkeletonItem variant="h3" />
@@ -104,7 +113,11 @@ const { t } = useI18n()
     </template>
   </ElResult>
 
-  <ElEmpty v-else-if="empty" class="locus-async-state locus-async-state--empty" :description="emptyText || t('common.noData')" />
+  <ElEmpty
+    v-else-if="empty"
+    class="locus-async-state locus-async-state--empty"
+    :description="emptyText || t('common.noData')"
+  />
   <slot v-else />
 </template>
 

@@ -1,6 +1,6 @@
 :root {
-  --locus-font-family-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --locus-font-family-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --locus-font-family-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --locus-font-family-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
 
   --locus-font-size-xs: 0.625rem;
   --locus-font-size-sm: 0.6875rem;

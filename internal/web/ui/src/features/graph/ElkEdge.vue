@@ -16,14 +16,16 @@ const props = defineProps<{
   style?: CSSProperties
   markerEnd?: string
 }>()
-const edgePath = computed(() => getSmoothStepPath({
-  sourceX: props.sourceX,
-  sourceY: props.sourceY,
-  targetX: props.targetX,
-  targetY: props.targetY,
-  sourcePosition: props.sourcePosition,
-  targetPosition: props.targetPosition,
-}))
+const edgePath = computed(() =>
+  getSmoothStepPath({
+    sourceX: props.sourceX,
+    sourceY: props.sourceY,
+    targetX: props.targetX,
+    targetY: props.targetY,
+    sourcePosition: props.sourcePosition,
+    targetPosition: props.targetPosition,
+  }),
+)
 </script>
 
 <template>

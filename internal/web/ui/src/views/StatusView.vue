@@ -20,20 +20,22 @@ const pageSize = 5
 
 const filteredLinks = computed(() => {
   const term = searchText.value.trim().toLocaleLowerCase()
-  return (statusQuery.data.value?.links ?? []).filter((link) => {
+  return (statusQuery.data.value?.links ?? []).filter(link => {
     if (statusFilter.value !== 'all' && link.status !== statusFilter.value) return false
     if (!term) return true
-    return [link.link_id, link.status, link.observation?.provider ?? '']
-      .some(value => value.toLocaleLowerCase().includes(term))
+    return [link.link_id, link.status, link.observation?.provider ?? ''].some(value =>
+      value.toLocaleLowerCase().includes(term),
+    )
   })
 })
 const filteredRoutes = computed(() => {
   const term = searchText.value.trim().toLocaleLowerCase()
-  return (statusQuery.data.value?.routes ?? []).filter((route) => {
+  return (statusQuery.data.value?.routes ?? []).filter(route => {
     if (statusFilter.value !== 'all' && route.evidence.status !== statusFilter.value) return false
     if (!term) return true
-    return [route.route_id, route.evidence.status, ...route.evidence.links.map(link => link.link_id)]
-      .some(value => value.toLocaleLowerCase().includes(term))
+    return [route.route_id, route.evidence.status, ...route.evidence.links.map(link => link.link_id)].some(value =>
+      value.toLocaleLowerCase().includes(term),
+    )
   })
 })
 const pagedLinks = computed(() => {
@@ -49,15 +51,13 @@ watch([searchText, statusFilter, () => statusQuery.data.value], () => {
   linkPage.value = 1
   routePage.value = 1
 })
-const empty = computed(() => Boolean(
-  statusQuery.data.value
-  && !statusQuery.data.value.links.length
-  && !statusQuery.data.value.routes.length,
-))
-const formatObservedAt = (value: string) => new Intl.DateTimeFormat(
-  preferences.locale.value,
-  { dateStyle: 'medium', timeStyle: 'medium' },
-).format(new Date(value))
+const empty = computed(() =>
+  Boolean(statusQuery.data.value && !statusQuery.data.value.links.length && !statusQuery.data.value.routes.length),
+)
+const formatObservedAt = (value: string) =>
+  new Intl.DateTimeFormat(preferences.locale.value, { dateStyle: 'medium', timeStyle: 'medium' }).format(
+    new Date(value),
+  )
 </script>
 
 <template>
@@ -78,13 +78,10 @@ const formatObservedAt = (value: string) => new Intl.DateTimeFormat(
       @retry="statusQuery.refetch()"
     >
       <div class="status-view__filters">
-        <ElInput
-          v-model="searchText"
-          clearable
-          :placeholder="t('status.search')"
-          :aria-label="t('status.search')"
-        >
-          <template #prefix><ElIcon><Search /></ElIcon></template>
+        <ElInput v-model="searchText" clearable :placeholder="t('status.search')" :aria-label="t('status.search')">
+          <template #prefix
+            ><ElIcon><Search /></ElIcon
+          ></template>
         </ElInput>
         <ElSelect v-model="statusFilter" :aria-label="t('status.filter')">
           <ElOption :label="t('status.allStatuses')" value="all" />
@@ -95,7 +92,9 @@ const formatObservedAt = (value: string) => new Intl.DateTimeFormat(
       <ElRow class="status-view__summary">
         <ElCol v-for="state in statusOrder" :key="state" class="status-view__summary-column" :xs="12" :sm="6">
           <ElStatistic :title="t(`status.${state}`)" :value="statusQuery.data.value?.summary[state] ?? 0">
-            <template #suffix><small>{{ t('status.linkCount') }}</small></template>
+            <template #suffix
+              ><small>{{ t('status.linkCount') }}</small></template
+            >
           </ElStatistic>
         </ElCol>
       </ElRow>
@@ -120,7 +119,9 @@ const formatObservedAt = (value: string) => new Intl.DateTimeFormat(
                 :empty-text="t('common.noData')"
               >
                 <ElTableColumn prop="link_id" :label="t('status.links')" min-width="220">
-                  <template #default="{ row }"><span class="technical-id">{{ row.link_id }}</span></template>
+                  <template #default="{ row }"
+                    ><span class="technical-id">{{ row.link_id }}</span></template
+                  >
                 </ElTableColumn>
                 <ElTableColumn :label="t('status.state')" width="88">
                   <template #default="{ row }"><StatusBadge :status="row.status" /></template>
@@ -169,7 +170,9 @@ const formatObservedAt = (value: string) => new Intl.DateTimeFormat(
                 :empty-text="t('common.noData')"
               >
                 <ElTableColumn prop="route_id" :label="t('status.routes')" min-width="220">
-                  <template #default="{ row }"><span class="technical-id">{{ row.route_id }}</span></template>
+                  <template #default="{ row }"
+                    ><span class="technical-id">{{ row.route_id }}</span></template
+                  >
                 </ElTableColumn>
                 <ElTableColumn :label="t('status.state')" width="88">
                   <template #default="{ row }"><StatusBadge :status="row.evidence.status" /></template>

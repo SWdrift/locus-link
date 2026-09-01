@@ -20,7 +20,7 @@ const scopeOptions = computed(() => {
 })
 const filteredDocuments = computed(() => {
   const term = searchText.value.trim().toLocaleLowerCase()
-  return (knowledgeQuery.data.value?.documents ?? []).filter((document) => {
+  return (knowledgeQuery.data.value?.documents ?? []).filter(document => {
     if (scopeFilter.value && document.scope_id !== scopeFilter.value) return false
     if (!term) return true
     const associations = document.associations.flatMap(association => [
@@ -28,16 +28,21 @@ const filteredDocuments = computed(() => {
       association.object_type,
       association.ref,
     ])
-    return [document.title, document.path, document.scope_id, ...associations]
-      .some(value => value.toLocaleLowerCase().includes(term))
+    return [document.title, document.path, document.scope_id, ...associations].some(value =>
+      value.toLocaleLowerCase().includes(term),
+    )
   })
 })
 
-watch(filteredDocuments, (documents) => {
-  if (!documents.some(document => document.id === selectedDocument.value)) {
-    selectedDocument.value = documents[0]?.id ?? ''
-  }
-}, { immediate: true })
+watch(
+  filteredDocuments,
+  documents => {
+    if (!documents.some(document => document.id === selectedDocument.value)) {
+      selectedDocument.value = documents[0]?.id ?? ''
+    }
+  },
+  { immediate: true },
+)
 
 const documentQuery = useQuery({
   queryKey: computed(() => ['document', selectedDocument.value]),
@@ -75,7 +80,9 @@ const empty = computed(() => Boolean(knowledgeQuery.data.value && !knowledgeQuer
               :placeholder="t('knowledge.search')"
               :aria-label="t('knowledge.search')"
             >
-              <template #prefix><ElIcon><Search /></ElIcon></template>
+              <template #prefix
+                ><ElIcon><Search /></ElIcon
+              ></template>
             </ElInput>
             <ElSelect
               v-model="scopeFilter"
@@ -94,11 +101,7 @@ const empty = computed(() => Boolean(knowledgeQuery.data.value && !knowledgeQuer
               :default-active="selectedDocument"
               @select="selectedDocument = $event"
             >
-              <ElMenuItem
-                v-for="item in filteredDocuments"
-                :key="item.id"
-                :index="item.id"
-              >
+              <ElMenuItem v-for="item in filteredDocuments" :key="item.id" :index="item.id">
                 <span class="knowledge-view__document-summary">
                   <span>{{ item.scope_id }}</span>
                   <strong>{{ item.title }}</strong>

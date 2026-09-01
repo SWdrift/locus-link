@@ -25,19 +25,21 @@ const statusColor: Record<EvidenceStatus, string> = {
   unknown: 'var(--status-unknown)',
 }
 
-const edges = computed<Edge<LayoutEdgeData>[]>(() => props.layout.edges.map((edge) => {
-  const active = props.activeSteps.has(edge.id)
-  const selected = props.selection?.kind === 'link' && edge.id === props.selection.id
-  return {
-    ...edge,
-    animated: active,
-    selected,
-    style: {
-      stroke: active || selected ? 'var(--accent)' : statusColor[props.linkStatus.get(edge.id) ?? 'unknown'],
-      strokeWidth: active || selected ? 2.6 : 1.6,
-    },
-  }
-}))
+const edges = computed<Edge<LayoutEdgeData>[]>(() =>
+  props.layout.edges.map(edge => {
+    const active = props.activeSteps.has(edge.id)
+    const selected = props.selection?.kind === 'link' && edge.id === props.selection.id
+    return {
+      ...edge,
+      animated: active,
+      selected,
+      style: {
+        stroke: active || selected ? 'var(--accent)' : statusColor[props.linkStatus.get(edge.id) ?? 'unknown'],
+        strokeWidth: active || selected ? 2.6 : 1.6,
+      },
+    }
+  }),
+)
 </script>
 
 <template>

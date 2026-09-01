@@ -1,6 +1,4 @@
-export type GraphSelection =
-  | { kind: 'entity'; id: string }
-  | { kind: 'link'; id: string }
+export type GraphSelection = { kind: 'entity'; id: string } | { kind: 'link'; id: string }
 
 export interface LayoutNodeData {
   label: string

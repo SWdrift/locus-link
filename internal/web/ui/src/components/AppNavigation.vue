@@ -104,7 +104,6 @@ const { t } = useI18n()
   outline-offset: 2px;
 }
 
-
 .locus-navigation__menu {
   --el-menu-bg-color: transparent;
   --el-menu-hover-bg-color: var(--surface-hover);
@@ -158,7 +157,6 @@ const { t } = useI18n()
   justify-content: center;
 }
 
-
 @media (max-width: 800px) {
   .locus-navigation {
     display: grid;
@@ -199,7 +197,6 @@ const { t } = useI18n()
   .locus-navigation--collapsed .locus-navigation__label {
     display: inline;
   }
-
 }
 
 @media (max-width: 480px) {

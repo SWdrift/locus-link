@@ -39,7 +39,9 @@ const { t } = useI18n()
       :title="t(`graph.resolveStatus.${resolveResult.status}`)"
     >
       <span class="technical-id">
-        {{ resolveResult.route?.canonical_id ?? t('graph.candidates', { count: resolveResult.candidates?.length ?? 0 }) }}
+        {{
+          resolveResult.route?.canonical_id ?? t('graph.candidates', { count: resolveResult.candidates?.length ?? 0 })
+        }}
       </span>
     </ElAlert>
     <ElAlert v-if="resolveError" type="error" :closable="false" :title="resolveError.message" />
