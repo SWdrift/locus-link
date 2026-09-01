@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeftBold, ArrowRightBold, DataAnalysis, Document, Share } from '@element-plus/icons-vue'
+import { DataAnalysis, Document, Expand, Fold, Share } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 
 defineProps<{ collapsed: boolean }>()
@@ -30,14 +30,14 @@ const { t } = useI18n()
       </ElMenuItem>
     </ElMenu>
     <footer class="locus-navigation__footer">
-      <ElButton
+      <button
         class="locus-navigation__toggle"
-        text
+        type="button"
         :aria-label="collapsed ? t('nav.expand') : t('nav.collapse')"
         @click="emit('toggle')"
       >
-        <ElIcon size="var(--locus-icon-size-md)"><component :is="collapsed ? ArrowRightBold : ArrowLeftBold" /></ElIcon>
-      </ElButton>
+        <ElIcon><component :is="collapsed ? Expand : Fold" /></ElIcon>
+      </button>
     </footer>
   </div>
 </template>
@@ -77,11 +77,33 @@ const { t } = useI18n()
 }
 
 .locus-navigation__toggle {
-  width: var(--locus-control-height);
-  height: var(--locus-control-height);
+  width: calc(var(--locus-control-height) - var(--locus-space-2));
+  height: calc(var(--locus-control-height) - var(--locus-space-2));
+  display: inline-grid;
   flex: 0 0 auto;
+  place-items: center;
   padding: 0;
+  border: 0;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+  transition: color var(--locus-transition-fast);
 }
+
+.locus-navigation__toggle:hover {
+  color: var(--text-secondary);
+}
+
+.locus-navigation__toggle .el-icon {
+  width: var(--el-menu-icon-width);
+  font-size: calc(var(--locus-icon-size-md) - var(--locus-space-1));
+}
+
+.locus-navigation__toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 
 .locus-navigation__menu {
   --el-menu-bg-color: transparent;
