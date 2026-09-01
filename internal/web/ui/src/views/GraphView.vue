@@ -100,16 +100,20 @@ const probeMutation = useMutation({
       :error="graphQuery.error.value"
       :empty="empty"
       :empty-text="t('graph.empty')"
+      :retrying="graphQuery.isFetching.value"
+      retryable
+      skeleton="graph"
+      @retry="graphQuery.refetch()"
     >
-      <ElSkeleton v-if="layoutPending" class="graph-view__layout-state" :rows="6" animated :aria-label="t('graph.layout')" />
-      <ElAlert
-        v-else-if="layoutError"
-        type="error"
-        :closable="false"
-        :title="t('common.error')"
-        :description="layoutError.message"
-      />
-      <ElContainer v-else-if="layout && graphQuery.data.value" class="graph-view__workspace">
+      <AsyncState
+        :loading="layoutPending"
+        :loading-text="t('graph.layout')"
+        :error="layoutError"
+        retryable
+        skeleton="graph"
+        @retry="calculateLayout"
+      >
+        <ElContainer v-if="layout && graphQuery.data.value" class="graph-view__workspace">
         <ElMain class="graph-view__canvas-region">
           <GraphCanvas
             :key="layout.fingerprint + layoutRevision"
@@ -142,6 +146,7 @@ const probeMutation = useMutation({
           />
         </ElAside>
       </ElContainer>
+      </AsyncState>
     </AsyncState>
   </section>
 </template>
@@ -168,10 +173,6 @@ const probeMutation = useMutation({
   font-size: var(--locus-font-size-base);
 }
 
-.graph-view__layout-state {
-  min-height: 0;
-  flex: 1;
-}
 
 .graph-view__workspace {
   min-width: 0;

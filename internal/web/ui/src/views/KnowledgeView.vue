@@ -61,6 +61,10 @@ const empty = computed(() => Boolean(knowledgeQuery.data.value && !knowledgeQuer
       :error="knowledgeQuery.error.value"
       :empty="empty"
       :empty-text="t('knowledge.noDocumentationHint')"
+      :retrying="knowledgeQuery.isFetching.value"
+      retryable
+      skeleton="knowledge"
+      @retry="knowledgeQuery.refetch()"
     >
       <ElContainer class="knowledge-view__workspace">
         <ElAside class="knowledge-view__index" width="296px">
@@ -107,7 +111,15 @@ const empty = computed(() => Boolean(knowledgeQuery.data.value && !knowledgeQuer
         </ElAside>
 
         <ElMain class="knowledge-view__reader">
-          <AsyncState :loading="documentQuery.isPending.value" :error="documentQuery.error.value" :empty="!selectedDocument">
+          <AsyncState
+            :loading="documentQuery.isPending.value"
+            :error="documentQuery.error.value"
+            :empty="!selectedDocument"
+            :retrying="documentQuery.isFetching.value"
+            retryable
+            skeleton="document"
+            @retry="documentQuery.refetch()"
+          >
             <template v-if="documentQuery.data.value">
               <header class="knowledge-view__document-header">
                 <div>

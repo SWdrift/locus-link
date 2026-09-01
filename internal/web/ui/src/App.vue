@@ -58,7 +58,14 @@ const connectionText = computed(() => {
           </ElHeader>
 
           <ElMain class="locus-app__content">
-            <AsyncState :loading="contextQuery.isPending.value" :error="contextQuery.error.value">
+            <AsyncState
+              :loading="contextQuery.isPending.value"
+              :error="contextQuery.error.value"
+              :retrying="contextQuery.isFetching.value"
+              retryable
+              skeleton="app"
+              @retry="contextQuery.refetch()"
+            >
               <RouterView />
             </AsyncState>
           </ElMain>

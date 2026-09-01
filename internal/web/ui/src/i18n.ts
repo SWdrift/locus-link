@@ -11,7 +11,14 @@ const messages = {
     nav: { graph: 'Graph', status: 'Status', knowledge: 'Knowledge', collapse: '折叠侧边栏', expand: '展开侧边栏' },
     settings: { language: '语言', theme: '主题', system: '跟随系统', light: '浅色', dark: '深色' },
     context: { currentEntity: 'Current Entity', vantage: 'Vantage' },
-    common: { loading: '加载中', noData: '暂无数据', error: '加载失败', never: '从未' },
+    common: {
+      loading: '正在加载内容',
+      noData: '暂无数据',
+      error: '内容加载失败',
+      errorHint: '请检查本机服务后重试',
+      retry: '重试',
+      never: '从未',
+    },
     graph: {
       eyebrow: 'Declared View', title: 'Graph', entities: 'Entity', links: 'Link', routes: 'Route',
       link: 'Link', inspector: 'Inspector', details: '对象与操作', selection: '选择', activeRoute: 'Active Route',
@@ -43,7 +50,14 @@ const messages = {
     nav: { graph: 'Graph', status: 'Status', knowledge: 'Knowledge', collapse: 'Collapse sidebar', expand: 'Expand sidebar' },
     settings: { language: 'Language', theme: 'Theme', system: 'System', light: 'Light', dark: 'Dark' },
     context: { currentEntity: 'Current Entity', vantage: 'Vantage' },
-    common: { loading: 'Loading', noData: 'No data', error: 'Unable to load', never: 'Never' },
+    common: {
+      loading: 'Loading content',
+      noData: 'No data',
+      error: 'Unable to load content',
+      errorHint: 'Check the local service and try again',
+      retry: 'Try again',
+      never: 'Never',
+    },
     graph: {
       eyebrow: 'Declared View', title: 'Graph', entities: 'Entities', links: 'Links', routes: 'Routes',
       link: 'Link', inspector: 'Inspector', details: 'Object and actions', selection: 'Selection', activeRoute: 'Active Route',

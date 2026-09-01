@@ -30,6 +30,7 @@
 - Knowledge 搜索 Scope、标题、路径与关联对象元数据；Markdown 由 `markdown-it` 渲染后经 DOMPurify 净化。
 - Status 搜索、状态筛选和每表独立分页基于 `/api/v0/status` 完整投影在客户端派生。Observation 与 Route Evidence 面板固定为相同高度，内部表格填充剩余空间，分页 footer 固定高度；SQLite 保存 applicable Observation，不是可分页事件源，因而当前不引入服务端分页。
 - 桌面侧边栏使用 `184px`/`56px` 展开与图标态，折叠按钮固定在底部；Element Plus Menu 的 collapse API 负责折叠几何，避免自定义 padding 与组件内部布局竞争。状态不持久化，移动端不显示折叠按钮。
+- 查询边界统一复用 `AsyncState`：初次加载使用 Element Plus `ElSkeleton`/`ElSkeletonItem` 按页面结构保留布局，错误使用 `ElResult` 并提供显式重试；后台刷新和业务 mutation 继续保留原内容，只在操作入口展示局部 loading，避免全屏蒙层阻断上下文。
 
 ## Case Conventions
 

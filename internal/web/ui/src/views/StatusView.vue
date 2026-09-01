@@ -68,7 +68,15 @@ const formatObservedAt = (value: string) => new Intl.DateTimeFormat(
       </template>
     </PageHeader>
 
-    <AsyncState :loading="statusQuery.isPending.value" :error="statusQuery.error.value" :empty="empty">
+    <AsyncState
+      :loading="statusQuery.isPending.value"
+      :error="statusQuery.error.value"
+      :empty="empty"
+      :retrying="statusQuery.isFetching.value"
+      retryable
+      skeleton="status"
+      @retry="statusQuery.refetch()"
+    >
       <div class="status-view__filters">
         <ElInput
           v-model="searchText"
