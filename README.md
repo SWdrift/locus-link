@@ -1,76 +1,120 @@
 # locus-link
 
-locus-link 是一个 Agent 优先的 Link 管理工具。它把机器、连接方式和 Route 统一声明和管理，让用户与 Agent 都能用同一种方式查询“从哪里、通过什么方式，可以到达哪个目标”。
+locus-link 用于记录和查询具体环境中已经确认的访问与操作链路。
 
-Agent 可以根据当前位置和所需能力找到匹配的 Route，取得执行顺序、底层工具所需参数和最近一次探测结果，再调用相应工具完成后续自动化。locus-link 本身只负责解析 Route 和检查连接是否可用，不会替你启动 FRP、建立 SSH session 或执行 Salt operation，也不保存 Secret。
+Registry 描述需要访问的对象、对象之间已知的 Link，以及为特定目标能力声明的 Route。用户或 Agent 可以通过 `resolve` 查询匹配的显式 Route，并取得各步骤的底层机制、相关文档和已有探测结果。
+
+locus-link 不执行 Route 本身。它不会建立 FRP tunnel、SSH session 或执行 Salt、数据库等操作；这些工作仍由对应的原生工具或其他执行系统完成。`probe` 只执行 Provider 定义的有限检查并记录结果。Secret 由外部 credential mechanism 管理，Registry 中只保存引用。
+
+![概览](public/overview-zh.png)
 
 ## Quick Start
 
-在包含 `.locus/registry` 的项目或其任意子目录中运行：
+在包含 `.locus/registry` 的项目或其子目录中：
 
 ```text
 locus resolve production-host --capability shell --from workstation.dev-a --vantage office-lan
 ```
 
-`resolve` 返回输入 Binding 解释、canonical target Entity facts、matched Route、ordered Links、Provider 原生上下文、documentation references 和已有 evidence。需要刷新现实证据时：
+`resolve` 查找符合目标、能力和当前现场的已声明 Route，并返回有序 Link、底层调用信息、文档引用和当前可用的探测证据。
+
+需要更新证据时：
 
 ```text
 locus probe route.prod-shell --from workstation.dev-a --vantage office-lan
 locus resolve production-host --capability shell --from workstation.dev-a --vantage office-lan
 ```
 
-正常循环是：
+基本使用方式是：
 
 ```text
 resolve → probe（需要时）→ resolve
 ```
 
-`resolve` 只读取 world model 和已有 Observation，不调用 Probe、不写 Observation。`probe` 执行安全检查并写入 Link Observation，不执行 Route 的 operational action。
+`resolve` 是只读操作，不会隐式 Probe。`probe` 测量指定 Link 或 Route 中的 Link，并追加 Observation，不执行 Route 所描述的实际操作。
 
-- `from`：当前 operational Entity / actor；
-- `vantage`：reachability Observation 成立的网络观察位置。
+`--from` 表示本次操作从哪个 Entity 出发；`--vantage` 表示本次网络观测所在的位置。
 
-## Commands
+![Web UI Graph](public/3.Graph.png)
 
-| 命令 | 用途 |
-|---|---|
-| `locus resolve <target> --capability <name>` | 解析匹配的显式 Route 和当前 evidence |
-| `locus probe <link-or-route-id>` | 安全探测 Link 或 Route |
-| `locus context` | 查看根来源、Scope imports、Binding、Source cache、actor 和 vantage |
-| `locus graph` | 查看递归 Scope 图、provenance、声明和 partial diagnostics |
-| `locus show <ref-or-id>` | 查看声明对象和引用解析 |
-| `locus list [binding\|entity\|link\|route]` | 列出 Registry 声明 |
-| `locus status [link-or-route-id]` | 查看详细 evidence |
-| `locus init --scope-id <id>` / `locus user init --scope-id <id>` | 创建项目或用户 Registry |
-| `locus project register\|unregister\|list` | 管理项目反向登记 |
-| `locus refresh [alias-path]` | 预演 remote Dependency Snapshot；回退时用 `--allow-regression --expected-candidate-digest <digest>` 显式确认 |
-| `locus web` | 启动仅监听本机回环地址的 Web UI |
+## Model
 
-完整 flags、输出、退出码和副作用见 [CLI 公共契约](documents/design/contracts/CLI契约.md)；Web HTTP 接口和安全边界见[本机 Web 契约](documents/design/contracts/Web契约.md)。
+| 概念            | 含义                                                              |
+| --------------- | ----------------------------------------------------------------- |
+| **Entity**      | 需要访问或操作的对象，例如工作站、服务器、数据库或代码仓库        |
+| **Link**        | 两个 Entity 之间已经登记的操作关系，并声明所需和提供的 capability |
+| **Route**       | 为某个目标能力选择并排序的一组已有 Link                           |
+| **Binding**     | 当前 Scope 中的业务名称到具体 Entity 的映射                       |
+| **Observation** | 一次 Probe 产生的测量记录                                         |
+| **Scope**       | 一组具有稳定 identity 的声明及其显式 imports                      |
+
+Route 是对已有 Link 的显式组合。当前 `resolve` 不进行自动寻路，也不会根据 Probe 结果自动修改 Route。
 
 ## Registry
 
-创建并校验 Registry：
+项目 Registry 默认位于：
+
+```text
+.locus/registry/
+```
+
+如果当前目录向上找不到更近的项目 Registry，locus-link 使用用户目录 `~/.locus/registry`；`${LOCUS_HOME}/registry` 可覆盖该默认值。命中 `~/.locus` 时标记为用户根，命中更近的项目 `.locus` 时标记为项目根。
+
+Registry 使用 `locus/v1` YAML 声明 Scope、Import、Binding、Entity、Link 和 Route。Scope 可以显式 import 本地目录、Git 或 ZIP URL Source。普通查询只读取本地声明和已激活的 remote cache；远程内容只由显式 `refresh` 获取。
+
+创建一个项目 Registry：
 
 ```text
 locus init --scope-id project.example --import-user user --register
 locus validate
 ```
 
-`locus` 默认从当前目录向上寻找 `.locus/registry/scope.yaml`；找不到项目 Registry 时使用 `${LOCUS_HOME}/registry` 用户根。`--registry` 用于 override、automation、tests 和特殊多 Registry 场景。
+完整声明格式见[声明 YAML 公共契约](documents/design/contracts/声明契约.md)。
 
-Registry 使用严格 `locus/v1` YAML 声明 Scope、Import、Binding、Entity、Link 和人工排序的 Route。Import 可递归指向 directory、Git 或 ZIP URL Source；普通读取只使用已激活 remote cache，网络获取仅由 `refresh` 触发。完整 schema、identity、引用规则和 Provider data 见[声明 YAML 公共契约](documents/design/contracts/声明契约.md)。
+## Commands
 
-## Build and Verification
+| 命令                                         | 用途                                                |
+| -------------------------------------------- | --------------------------------------------------- |
+| `locus resolve <target> --capability <name>` | 查询匹配的显式 Route 和当前证据                     |
+| `locus probe <link-or-route-id>`             | 探测 Link 或 Route                                  |
+| `locus status [link-or-route-id]`            | 查看当前 evidence                                   |
+| `locus graph`                                | 查看当前收集到的 Scope 和声明图                     |
+| `locus show <ref-or-id>`                     | 查看一个声明对象                                    |
+| `locus list [binding\|entity\|link\|route]`  | 列出声明                                            |
+| `locus context`                              | 查看当前 Registry、Scope、actor 和 vantage 等上下文 |
+| `locus refresh [alias-path]`                 | 显式获取并检查 remote Registry 更新                 |
+| `locus web`                                  | 启动本机 Web UI                                     |
 
-需要 Go 1.26 或兼容版本。PowerShell 快捷入口及职责见 [`scripts/README.md`](scripts/README.md)，两种 executable 的组成与用途见[产物设计](documents/design/产物设计.md)。
+完整 flags、JSON 输出、退出码和副作用见 [CLI 公共契约](documents/design/contracts/CLI契约.md)。
 
-E2E declarations 和 simulated device state 位于 `test/e2e/case/`；native 与 Scope graph 完整运行产物分别保留在 `temp/e2e-run/native/` 和 `temp/e2e-run/scope/`。
+## Build
+
+开发环境需要 Go 1.26 或兼容版本。
+
+在 PowerShell 中构建带 Web UI 的 executable：
+
+```powershell
+./scripts/build.ps1
+```
+
+产物位于：
+
+```text
+temp/bin/locus.exe
+```
+
+运行完整验证：
+
+```powershell
+./scripts/verify.ps1
+```
+
+其他开发脚本见 [`scripts/README.md`](scripts/README.md)。
 
 ## Documentation
 
-- [设计文档入口](documents/design/README.md)
+- [设计文档](documents/design/README.md)
 - [CLI 公共契约](documents/design/contracts/CLI契约.md)
 - [声明 YAML 公共契约](documents/design/contracts/声明契约.md)
-- [本机 Web 契约](documents/design/contracts/Web契约.md)
+- [Web 契约](documents/design/contracts/Web契约.md)
 - [当前实现快照](documents/current-architecture.md)
