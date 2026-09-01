@@ -70,6 +70,7 @@
 ## Verified Implementation Baseline
 
 - 可交付 executable 的组成、构建依赖与开发组合以[产物设计](documents/design/产物设计.md)为准；Cobra adapter 位于 `internal/cli/`，领域模型、Resolver、Provider 和 Store 位于 `internal/locus/`。
+- 发布版本由根 `VERSION` 唯一提供，构建通过 ldflags 注入 version、commit 与 artifact kind；`locus version` 同时报告唯一上一版本和当前 State schema。
 - 本机 Web API 位于 `internal/web/`，通过 `locus web` 启动 loopback HTTP server，直接复用 Core 提供 Context、Graph、Status、Knowledge、Validate、Resolve 与 safe Probe。
 - Locus Web API 已提供 `/api/v0/locus/scopes`、`/api/v0/locus/dependencies` 与 `/api/v0/locus/refresh`；Context、Graph、Status、Knowledge、Validate、Resolve 和 Probe 可按 openable Scope 动态装载。
 - Graph 投影不暴露 Provider data；Knowledge 只读取声明引用且经符号链接解析后仍位于所属 Scope `docs/` 的文件，同路径多 association 去重；Markdown 禁用 HTML 并经 DOMPurify 净化。
@@ -82,9 +83,11 @@
 - Provider Probe 在 dial 或进程启动前重复执行 Validate；FRP、SSH、Salt Observation 分别记录具体测量 kind，外部进程失败不保存原始输出。
 - Observation 的零 `expires_at` 表示没有显式期限；只有非零且已过期的记录才派生为 stale。
 - Observation 持久化 declaration/source/binding digest、Probe kind/version、vantage 与 relevant context fingerprint；Resolve、Status 和 Route evidence 统一使用完整 applicability query，旧 schema 行保留但因 provenance 为空而失效。
+- SQLite 使用 `PRAGMA user_version`；普通 `OpenStore` 只初始化空 State 或接受当前 schema，不再隐式修改旧库。`locus migrate` 仅支持 schema 0→1，先以 `VACUUM INTO` 备份再事务迁移，当前 schema 幂等 no-op。
 - Graph 与 Dependency Graph 的布局尺寸必须同时写入 Vue Flow node model 和实际卡片盒模型；布局常量、wrapper 与 card 不得维护第二套几何。
 - `validate`、`list`、`show` 是 declaration-only 路径，不解析 PATH、runtime 或 Observation state。
-- `LOCUS_STATE_PATH` 可将测试 Store 定向到工作区；生产默认使用 OS 本机 state 目录。
+- `LOCUS_HOME` 可覆盖用户 Locus 根；默认是 `%USERPROFILE%\.locus`。默认 State 为该根下 `state/state.db`，`LOCUS_STATE_PATH` 可将测试 Store 定向到工作区。
+- Windows 部署入口是高确认级别的 `scripts/deploy.ps1`：完整构建、版本门禁、调用迁移、替换 `%USERPROFILE%\.locus\bin\locus.exe` 与根目录 `release.json`、smoke check 与失败回滚。自动化仅可对工作区路径传 `-Confirm:$false`，真实用户目录操作必须显式确认。
 - `context`、`resolve`、`probe`、`status` 统一要求显式 `--from`，并通过同一个 builder 解析 vantage 与 workstation-local `--mechanism-bindings`；未传 vantage 时退化为 host-specific value。
 
 ## End-to-End Contract

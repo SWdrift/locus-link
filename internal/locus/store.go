@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"locus-link/internal/migration"
 	"os"
 	"path/filepath"
-	"runtime"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -41,22 +41,11 @@ func DefaultStatePath() (string, error) {
 	if path := os.Getenv("LOCUS_STATE_PATH"); path != "" {
 		return filepath.Abs(path)
 	}
-	if runtime.GOOS == "windows" {
-		base := os.Getenv("LOCALAPPDATA")
-		if base == "" {
-			return "", errors.New("LOCALAPPDATA is not set")
-		}
-		return filepath.Join(base, "locus-link", "state.db"), nil
+	home, err := DefaultHome()
+	if err != nil {
+		return "", err
 	}
-	base := os.Getenv("XDG_STATE_HOME")
-	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		base = filepath.Join(home, ".local", "state")
-	}
-	return filepath.Join(base, "locus-link", "state.db"), nil
+	return filepath.Join(home, "state", "state.db"), nil
 }
 
 func OpenStore(path string) (*Store, error) {
@@ -67,71 +56,11 @@ func OpenStore(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	store := &Store{db: db, path: path}
-	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS observations (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		subject TEXT NOT NULL,
-		vantage TEXT NOT NULL,
-		declaration_digest TEXT NOT NULL DEFAULT '',
-		source_digest TEXT NOT NULL DEFAULT '',
-		binding_digest TEXT NOT NULL DEFAULT '',
-		probe_kind TEXT NOT NULL DEFAULT '',
-		probe_semantics_version TEXT NOT NULL DEFAULT '',
-		context_fingerprint TEXT NOT NULL DEFAULT '',
-		status TEXT NOT NULL,
-		observed_at TEXT NOT NULL,
-		expires_at TEXT NOT NULL,
-		provider TEXT NOT NULL,
-		evidence TEXT NOT NULL,
-		error TEXT NOT NULL
-	)`)
-	if err != nil {
+	if err := migration.PrepareCurrentState(db); err != nil {
 		db.Close()
 		return nil, err
 	}
-	if err := migrateObservationApplicability(db); err != nil {
-		db.Close()
-		return nil, err
-	}
-	if err := migrateLocusState(db); err != nil {
-		db.Close()
-		return nil, err
-	}
-	return store, nil
-}
-func migrateObservationApplicability(db *sql.DB) error {
-	rows, err := db.Query(`PRAGMA table_info(observations)`)
-	if err != nil {
-		return err
-	}
-	columns := map[string]bool{}
-	for rows.Next() {
-		var cid, notNull, primaryKey int
-		var name, columnType string
-		var defaultValue any
-		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
-			rows.Close()
-			return err
-		}
-		columns[name] = true
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	for _, column := range []string{
-		"declaration_digest", "source_digest", "binding_digest", "probe_kind", "probe_semantics_version", "context_fingerprint",
-	} {
-		if columns[column] {
-			continue
-		}
-		if _, err := db.Exec(`ALTER TABLE observations ADD COLUMN ` + column + ` TEXT NOT NULL DEFAULT ''`); err != nil {
-			return err
-		}
-	}
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS observations_applicability ON observations(
-		subject,vantage,declaration_digest,source_digest,binding_digest,probe_kind,probe_semantics_version,context_fingerprint,observed_at DESC
-	)`)
-	return err
+	return &Store{db: db, path: path}, nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }

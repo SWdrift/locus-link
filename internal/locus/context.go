@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
+	"runtime"
 	"sort"
+	"strings"
 )
 
 type RootContext struct {
@@ -48,7 +51,11 @@ func LoadRegistryContext(root string, store *Store) (*Registry, RootContext, err
 		}
 		root, err = DiscoverRegistry(cwd)
 		if err == nil {
-			origin = "project"
+			if sameRegistryPath(root, layout.Registry) {
+				origin = "user"
+			} else {
+				origin = "project"
+			}
 		} else {
 			root = layout.Registry
 			origin = "user"
@@ -97,6 +104,14 @@ func LoadRegistryContext(root string, store *Store) (*Registry, RootContext, err
 	return registry, result, nil
 }
 
+func sameRegistryPath(left, right string) bool {
+	left = filepath.Clean(left)
+	right = filepath.Clean(right)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(left, right)
+	}
+	return left == right
+}
 func ObservationVantage(value string) (string, error) {
 	if value != "" {
 		return value, nil

@@ -17,6 +17,51 @@ func TestLocusHomeLayoutUsesWorkspaceOverride(t *testing.T) {
 	if layout.Root != root || layout.Registry != filepath.Join(root, "registry") || layout.Objects != filepath.Join(root, "cache", "objects") || layout.Candidates != filepath.Join(root, "cache", "candidates") {
 		t.Fatalf("unexpected layout: %+v", layout)
 	}
+
+	statePath, err := DefaultStatePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if statePath != filepath.Join(root, "state", "state.db") {
+		t.Fatalf("unexpected state path: %s", statePath)
+	}
+}
+
+func TestRootSelectionRecognizesDiscoveredUserLocus(t *testing.T) {
+	base := workspaceTestPath(t, "discovered-user-root")
+	os.RemoveAll(base)
+	userHome := filepath.Join(base, "user")
+	home := filepath.Join(userHome, ".locus")
+	statePath := filepath.Join(home, "state", "state.db")
+	t.Setenv("LOCUS_HOME", home)
+	t.Setenv("LOCUS_STATE_PATH", statePath)
+	writeNamedRegistry(t, home, "registry", manifestYAML("scope.user", ""), nil)
+
+	nested := filepath.Join(userHome, "work", "unregistered")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(original)
+	if err := os.Chdir(nested); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := OpenStore(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	registry, root, err := LoadRegistryContext("", store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if root.RootOrigin != "user" || registry.Root != filepath.Join(home, "registry") {
+		t.Fatalf("discovered user locus was misclassified: root=%+v registry=%s", root, registry.Root)
+	}
 }
 
 func TestRootSelectionRegistrationAndUserIsolation(t *testing.T) {

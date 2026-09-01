@@ -18,45 +18,6 @@ type ProjectRegistration struct {
 	Available    bool      `json:"available"`
 }
 
-func migrateLocusState(db *sql.DB) error {
-	statements := []string{
-		`CREATE TABLE IF NOT EXISTS project_registrations (
-			scope_id TEXT PRIMARY KEY,
-			registry_path TEXT NOT NULL UNIQUE,
-			registered_at TEXT NOT NULL
-		)`,
-		`CREATE TABLE IF NOT EXISTS source_cache_entries (
-			owner_scope_id TEXT NOT NULL,
-			import_alias TEXT NOT NULL,
-			configured_source_digest TEXT NOT NULL,
-			expected_scope_id TEXT NOT NULL,
-			actual_scope_id TEXT NOT NULL,
-			active_content_digest TEXT NOT NULL,
-			resolved_revision TEXT NOT NULL,
-			object_path TEXT NOT NULL,
-			etag TEXT NOT NULL,
-			last_modified TEXT NOT NULL,
-			last_refresh_status TEXT NOT NULL,
-			last_refresh_error TEXT NOT NULL,
-			refreshed_at TEXT NOT NULL,
-			PRIMARY KEY(owner_scope_id, import_alias)
-		)`,
-		`CREATE TABLE IF NOT EXISTS scope_authorities (
-			scope_id TEXT PRIMARY KEY,
-			active_content_digest TEXT NOT NULL,
-			object_path TEXT NOT NULL,
-			provenance TEXT NOT NULL,
-			activated_at TEXT NOT NULL
-		)`,
-	}
-	for _, statement := range statements {
-		if _, err := db.Exec(statement); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (s *Store) RegisterProject(ctx context.Context, registryPath, home string) (ProjectRegistration, error) {
 	absolute, err := filepath.Abs(filepath.Clean(registryPath))
 	if err != nil {

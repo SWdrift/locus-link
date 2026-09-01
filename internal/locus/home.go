@@ -18,14 +18,14 @@ func DefaultHome() (string, error) {
 	if value := os.Getenv("LOCUS_HOME"); value != "" {
 		return filepath.Abs(value)
 	}
-	base, err := os.UserConfigDir()
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	if base == "" {
-		return "", errors.New("OS user config directory is unavailable")
+	if home == "" {
+		return "", errors.New("OS user home directory is unavailable")
 	}
-	return filepath.Join(base, "locus-link"), nil
+	return filepath.Join(home, ".locus"), nil
 }
 
 func LocusHomeLayout() (HomeLayout, error) {

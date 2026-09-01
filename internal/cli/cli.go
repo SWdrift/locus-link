@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"locus-link/internal/buildinfo"
 	"locus-link/internal/locus"
+	"locus-link/internal/migration"
 	"os"
 	"path/filepath"
 	"time"
@@ -39,6 +41,8 @@ type options struct {
 	Register                bool
 	AllowRegression         bool
 	ExpectedCandidateDigest string
+	StatePath               string
+	BackupDir               string
 }
 
 type cliError struct {
@@ -124,10 +128,51 @@ func (c *CLI) rootCommand(state *commandState) *cobra.Command {
 	root.AddCommand(
 		c.resolveCommand(state), c.probeCommand(state),
 		c.contextCommand(state), c.graphCommand(state), c.showCommand(state), c.listCommand(state), c.statusCommand(state),
-		c.initCommand(state), c.userCommand(state), c.projectCommand(state), c.refreshCommand(state), c.validateCommand(state),
+		c.versionCommand(state), c.initCommand(state), c.userCommand(state), c.projectCommand(state), c.refreshCommand(state),
+		c.validateCommand(state), c.migrateCommand(state),
 	)
 	root.AddCommand(c.extensions...)
 	return root
+}
+
+func (c *CLI) versionCommand(state *commandState) *cobra.Command {
+	return &cobra.Command{
+		Use: "version", Short: "Show release and data schema versions", GroupID: inspectionGroup,
+		Args: cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return state.set(buildinfo.Info{
+				Version: buildinfo.Version, PreviousVersion: buildinfo.PreviousVersion,
+				StateSchemaVersion: migration.CurrentStateSchemaVersion,
+				Commit:             buildinfo.Commit, Artifact: buildinfo.Artifact,
+			}, nil)
+		},
+	}
+}
+
+func (c *CLI) migrateCommand(state *commandState) *cobra.Command {
+	var opts options
+	command := &cobra.Command{
+		Use: "migrate", Short: "Migrate previous-version local state", GroupID: authoringGroup,
+		Args: cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return state.set(c.migrate(opts))
+		},
+	}
+	command.Flags().StringVar(&opts.StatePath, "state", "", "state database path; defaults to LOCUS_STATE_PATH or the OS state directory")
+	command.Flags().StringVar(&opts.BackupDir, "backup-dir", "", "directory for the pre-migration database backup")
+	return command
+}
+
+func (c *CLI) migrate(opts options) (any, error) {
+	statePath := opts.StatePath
+	if statePath == "" {
+		var err error
+		statePath, err = locus.DefaultStatePath()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return migration.MigrateState(statePath, opts.BackupDir)
 }
 
 func (c *CLI) initCommand(state *commandState) *cobra.Command {

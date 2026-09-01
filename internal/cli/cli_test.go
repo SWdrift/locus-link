@@ -14,6 +14,24 @@ import (
 	"testing"
 )
 
+func TestVersionAndMigrateCommands(t *testing.T) {
+	version := runInternalCLI(t, "version", "--json")
+	if version["version"] == "" || version["previous_version"] == "" || version["state_schema_version"] != float64(1) {
+		t.Fatalf("unexpected version result: %#v", version)
+	}
+
+	root := workspaceTestPath(t, "cli-migration")
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(root, "state.db")
+	backupDir := filepath.Join(root, "backups")
+	result := runInternalCLI(t, "migrate", "--state", statePath, "--backup-dir", backupDir, "--json")
+	if result["status"] != "initialized" || result["to_version"] != float64(1) {
+		t.Fatalf("unexpected migration result: %#v", result)
+	}
+}
+
 func TestDeclarationCommandsDoNotInvokeExternalTools(t *testing.T) {
 	root := workspaceTestPath(t, "cli-declaration-boundary")
 	if err := os.RemoveAll(root); err != nil {

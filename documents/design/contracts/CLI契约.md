@@ -54,11 +54,13 @@ Resolve 与 Probe 分开：Resolve 读取声明和证据；Probe 测量现实并
 | Inspection | `locus show <ref-or-id>` | 查看引用解析后的声明对象 | 无 |
 | Inspection | `locus list [binding\|entity\|link\|route]` | 列出当前声明 | 无 |
 | Inspection | `locus status [link-or-route-id]` | 查看已有 Link 或 Route evidence | 无 |
+| Inspection | `locus version` | 查看应用、上一版本、State schema、commit 与 artifact kind | 无 |
 | Authoring | `locus user init --scope-id <id>` | 创建用户根 Registry | 创建目录和 YAML |
 | Authoring | `locus init --scope-id <id>` | 创建通用 Scope Registry | 创建目录和 YAML，可选 registration |
 | Authoring | `locus project register|unregister|list` | 管理项目反向登记 | 只修改用户级 State DB |
 | Authoring | `locus refresh [alias-path]` | 显式刷新 remote imports | 获取、校验并原子激活 cache |
 | Authoring | `locus validate` | 校验 Registry 声明与 closure | 无 |
+| Authoring | `locus migrate` | 将上一版本本机 State 迁移到当前 schema | 备份并事务迁移 State DB |
 | Local UI | `locus web` | 启动只监听本机回环地址的 WebUI | 运行本地 HTTP 服务 |
 
 Inspection 用于查看和排错，不是 Resolve 的前置步骤。Authoring 不要求 actor 或 vantage。除显式 `refresh` 外，`graph/list/show/context/resolve/status/probe` 均不得 fetch 或联网。
@@ -124,6 +126,12 @@ Partial view 中，只允许 Probe 最终 view 内已完整加载并校验的 Li
 
 `show` 只显示声明和引用解析，不返回 Observation。Binding 保留 input ref、canonical Binding ID 和 canonical target。`list` 支持 `binding|entity|link|route`。`status` 只聚合已加载对象的 evidence。三者都返回顶层 view diagnostics；`show` 引用 blocked object 时为输入错误。
 
+### `version` 与 `migrate`
+
+`locus version --json` 返回 `version`、`previous_version`、`state_schema_version`、`commit` 与 `artifact`。版本查询不发现 Registry、不打开 State，也不读取运行现场。
+
+`locus migrate [--state <path>] [--backup-dir <path>]` 只处理 locus-link 本机 State DB。空数据库初始化为当前 schema；上一 schema 先生成一致备份再事务迁移；当前 schema 返回 `no_change`；其他版本拒绝。JSON 返回 `status: initialized|migrated|no_change`、`state_path`、`backup_path`、`from_version` 与 `to_version`。该命令不扫描或改写用户及项目 Registry。
+
 ### `user init`、`init` 与 `project`
 
 - `locus user init --scope-id <id>` 创建 `<LOCUS_HOME>/registry` 的最小 `locus/v1` Registry；已存在非空 Registry 时拒绝覆盖。
@@ -181,6 +189,8 @@ binding key 必须解析为当前 Declared View 中的 Link；文件拒绝未知
 | `init` | `--registry --scope-id --import-user --register` |
 | `project register` | `--registry` |
 | `project unregister`、`project list` | 无 |
+| `version` | 无 |
+| `migrate` | `--state --backup-dir` |
 | `refresh` | `--registry --allow-regression --expected-candidate-digest` |
 | `validate`、`graph`、`list`、`show` | `--registry` |
 | `context` | `--registry --from --vantage --mechanism-bindings` |

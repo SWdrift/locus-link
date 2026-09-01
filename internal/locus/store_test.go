@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"locus-link/internal/migration"
 	"os"
 	"path/filepath"
 	"testing"
@@ -116,6 +117,13 @@ func TestStoreMigrationPreservesButInvalidatesLegacyObservations(t *testing.T) {
 	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
+	}
+	result, err := migration.MigrateState(storePath, filepath.Join(filepath.Dir(storePath), "backups"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "migrated" || result.BackupPath == "" {
+		t.Fatalf("migration result = %#v", result)
 	}
 
 	store, err := OpenStore(storePath)

@@ -4,11 +4,11 @@
 
 ## 1. 总体结构与数据流
 
-当前构建带内嵌 Web UI 的 `locus.exe` 与不带页面资源的 `locus-backend.exe`；两者的 Cobra CLI 与 loopback Web API 共用 `internal/locus` Core，具体边界见[产物设计](design/产物设计.md)。声明保存在 YAML Registry 中，运行观测追加到本机 SQLite；Resolve 读取声明和既有 Observation，但不会主动 Probe。
+当前构建带内嵌 Web UI 的 `locus.exe` 与不带页面资源的 `locus-backend.exe`；根 `VERSION` 和 Go ldflags 写入发布元数据，两者的 Cobra CLI 与 loopback Web API 共用 `internal/locus` Core，具体边界见[产物设计](design/产物设计.md)。声明保存在 YAML Registry 中，运行观测追加到本机 SQLite；Resolve 读取声明和既有 Observation，但不会主动 Probe。
 
 ```mermaid
 flowchart LR
-    User["用户 / Agent"] --> CLI["locus CLI / local Web<br/>init · validate · context · list · show<br/>resolve · probe · status · web"]
+    User["用户 / Agent"] --> CLI["locus CLI / local Web<br/>version · migrate · init · validate · context<br/>list · show · resolve · probe · status · web"]
 
     CWD["当前目录或 --registry"] --> Discover["向上发现<br/>.locus/registry/scope.yaml"]
     Discover --> Loader["严格 YAML 加载器"]
@@ -79,6 +79,12 @@ ${LOCUS_HOME}/
 
 CLI 的 Runtime Context builder 统一解析 current Entity、vantage 与该 binding 文件。Resolve/Probe/Status 使用覆盖后的 effective Link；`show`、Graph 和静态 Registry validation 仍只读取声明。
 
+### 2.5 发布、部署与 State migration
+
+`locus version` 返回 `VERSION` 注入的应用版本、唯一上一版本、State schema、Git commit 与 artifact kind。SQLite schema 1 使用 `PRAGMA user_version`；新数据库直接初始化 schema 1，未版本化的 schema 0 必须先由 `locus migrate` 备份并迁移，普通 `OpenStore` 不再隐式修改旧数据库。
+
+用户级 Locus 默认统一位于 `%USERPROFILE%\.locus\`，其中 `bin/locus.exe`、根目录 `release.json`、`registry/`、`cache/`、`state/state.db` 与 `backups/` 各自分离。向上搜索优先使用更近的项目 `.locus/registry`；命中用户根时报告 `root_origin: user`。`scripts/deploy.ps1` 构建 complete artifact，拒绝未知或跨多版本升级，调用高确认级别的 `scripts/migrate.ps1`，再替换 executable 与发布清单。
+
 ## 3. 当前 Resolve
 
 ### 3.1 输入与适用性
@@ -138,8 +144,8 @@ Provider registry 仅注册以下三项：
 Observation 字段为 `subject`、`vantage`、`declaration_digest`、`source_digest`、`binding_digest`、`probe_kind`、`probe_semantics_version`、`context_fingerprint`、`status`、`observed_at`、`expires_at`、`provider`、JSON `evidence` 和 `error`，SQLite 另分配自增 ID。
 
 - Store 是 append-only `observations` 表；applicability 索引覆盖 subject、vantage 和全部 provenance 字段。新 Probe 不覆盖历史行。
-- 打开旧 Store 时通过 additive `ALTER TABLE` 补齐 provenance columns。旧行保留，但空 provenance 不匹配新查询，因此不会继续证明当前 Link。
-- 默认路径：Windows 为 `%LOCALAPPDATA%/locus-link/state.db`；其他平台优先 `$XDG_STATE_HOME/locus-link/state.db`，否则 `~/.local/state/locus-link/state.db`。`LOCUS_STATE_PATH` 可显式覆盖。
+- SQLite schema 由 `PRAGMA user_version` 显式标识。新数据库初始化为 schema 1；schema 0 只有通过显式迁移才补齐 provenance columns 和 Locus State tables，迁移前用 `VACUUM INTO` 备份。旧 Observation 保留，但空 provenance 不匹配新查询，因此不会继续证明当前 Link。
+- 默认 State 路径为 `${LOCUS_HOME}/state/state.db`，其中 `LOCUS_HOME` 默认 `%USERPROFILE%/.locus`；`LOCUS_STATE_PATH` 可显式覆盖。
 - Probe 开始时使用 UTC 时间并设 15 分钟有效期；FRP、SSH、Salt 分别使用 version `1` 的 `frpc-config-and-tcp-connect`、`tcp-connect-and-ssh-config`、`salt-test-ping` Probe semantics。声明/binding 错误在执行和 Append 前被拒绝；实际测量成功或失败才持久化。
 - Resolve、Status 和 Route evidence 都调用同一 applicability implementation；stale 是读取时根据过期时间派生，不回写数据库。
 - `status` 使用和 Resolve/Probe 相同的 current Entity、vantage 与 mechanism bindings；指定 Link/Route 时返回适用 evidence，无参数时汇总 Registry 内全部 Link。
@@ -159,10 +165,12 @@ stateDiagram-v2
 
 ## 6. 当前 CLI 清单
 
-除 help 外，根命令固定注册十三个子命令；结果型命令输出 JSON，`web` 启动长运行的本机 HTTP 服务。
+除 help 外，根命令固定注册十五个内建子命令；结果型命令输出 JSON，`web` 启动长运行的本机 HTTP 服务。
 
 | 命令 | 当前行为 |
 |---|---|
+| `version` | 返回应用版本、唯一上一版本、State schema、commit 与 artifact kind |
+| `migrate` | 初始化空 State，或备份并迁移上一 State schema；当前 schema 幂等 no-op |
 | `user init` | 创建用户根 Registry |
 | `init` | 创建 Scope Registry，可选显式用户 import 与项目登记 |
 | `project register\|unregister\|list` | 管理本机项目反向登记 |
