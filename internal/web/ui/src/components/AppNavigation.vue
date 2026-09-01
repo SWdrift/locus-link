@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { DataAnalysis, Document, Expand, Fold, Share } from '@element-plus/icons-vue'
+import { DataAnalysis, Document, Expand, Fold, Search, Share } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 
 defineProps<{ collapsed: boolean }>()
@@ -27,6 +27,10 @@ const { t } = useI18n()
       <ElMenuItem class="locus-navigation__item" index="/knowledge" :title="collapsed ? t('nav.knowledge') : undefined">
         <ElIcon><Document /></ElIcon>
         <span class="locus-navigation__label">{{ t('nav.knowledge') }}</span>
+      </ElMenuItem>
+      <ElMenuItem class="locus-navigation__item" index="/inspect" :title="collapsed ? t('nav.inspect') : undefined">
+        <ElIcon><Search /></ElIcon>
+        <span class="locus-navigation__label">{{ t('nav.inspect') }}</span>
       </ElMenuItem>
     </ElMenu>
     <footer class="locus-navigation__footer">

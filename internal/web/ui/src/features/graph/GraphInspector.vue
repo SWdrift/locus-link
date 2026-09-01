@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { RefreshRight } from '@element-plus/icons-vue'
+import EvidenceDetails from '../../components/EvidenceDetails.vue'
 import { useI18n } from 'vue-i18n'
 import type { GraphView, ProbeResult, ResolveResult, StatusView } from '../../domain/locus'
 import GraphResolvePanel from './GraphResolvePanel.vue'
@@ -85,6 +86,18 @@ watch(selection, () => {
       :title="t('graph.probeResult', { status: t(`status.${probeResult.status}`) })"
       :description="t('graph.observationsWritten', { count: probeResult.observations.length })"
     />
+    <template v-if="probeResult">
+      <ElCollapse v-if="probeResult.observations.length">
+        <ElCollapseItem
+          v-for="observation in probeResult.observations"
+          :key="`${observation.subject}-${observation.observed_at}`"
+          :name="observation.subject"
+          :title="observation.subject"
+        >
+          <EvidenceDetails :status="observation.status" :observation="observation" />
+        </ElCollapseItem>
+      </ElCollapse>
+    </template>
     <ElAlert v-if="probeError" type="error" :closable="false" :title="probeError.message" />
     <ElAlert v-if="statusError" type="error" :closable="false" :title="statusError.message" />
   </aside>
@@ -94,8 +107,10 @@ watch(selection, () => {
 .graph-inspector {
   min-width: 0;
   height: 100%;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: var(--locus-space-4);
   padding: var(--locus-space-5);
   overflow: auto;

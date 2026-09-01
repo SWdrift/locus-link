@@ -28,13 +28,15 @@ watch(
 )
 
 const scopeName = computed(() => contextQuery.data.value?.active_scope.id ?? t('common.loading'))
-const connectionState = computed<'error' | 'valid' | 'local'>(() => {
+const connectionState = computed<'error' | 'valid' | 'partial' | 'loading'>(() => {
   if (contextQuery.isError.value || validationQuery.isError.value) return 'error'
-  return validationQuery.data.value?.valid ? 'valid' : 'local'
+  if (contextQuery.isPending.value || validationQuery.isPending.value) return 'loading'
+  return validationQuery.data.value?.valid ? 'valid' : 'partial'
 })
 const connectionText = computed(() => {
   if (connectionState.value === 'error') return t('app.unavailable')
-  return connectionState.value === 'valid' ? t('app.validated') : t('app.localService')
+  if (connectionState.value === 'loading') return t('common.loading')
+  return connectionState.value === 'valid' ? t('app.validated') : t('app.partial')
 })
 </script>
 

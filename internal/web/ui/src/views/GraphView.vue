@@ -13,6 +13,7 @@ import { useOperationalContext } from '../operational-context'
 import { useStatusQuery } from '../queries'
 
 const { t } = useI18n()
+const route = useRoute()
 const context = useOperationalContext()
 const graphQuery = useQuery({ queryKey: ['graph'], queryFn: getGraph })
 const statusQuery = useStatusQuery()
@@ -49,21 +50,31 @@ async function calculateLayout() {
 }
 
 watch(
-  () => graphQuery.data.value,
-  graph => {
+  [() => graphQuery.data.value, () => route.query],
+  ([graph, query]) => {
     if (!graph) return
-
-    if (!graph.routes.some(route => route.canonical_id === selectedRoute.value)) {
+    const requestedRoute = typeof query.route === 'string' ? query.route : ''
+    if (requestedRoute && graph.routes.some(item => item.canonical_id === requestedRoute)) {
+      selectedRoute.value = requestedRoute
+    } else if (!graph.routes.some(item => item.canonical_id === selectedRoute.value)) {
       selectedRoute.value = graph.routes[0]?.canonical_id ?? ''
     }
 
-    const selectionExists =
-      selection.value?.kind === 'entity'
-        ? graph.entities.some(entity => entity.canonical_id === selection.value?.id)
-        : graph.links.some(link => link.canonical_id === selection.value?.id)
-    if (!selectionExists) {
-      const firstEntity = graph.entities[0]
-      selection.value = firstEntity ? { kind: 'entity', id: firstEntity.canonical_id } : null
+    const requestedID = typeof query.id === 'string' ? query.id : ''
+    const requestedKind = query.kind === 'link' ? 'link' : query.kind === 'entity' ? 'entity' : ''
+    if (requestedKind === 'entity' && graph.entities.some(entity => entity.canonical_id === requestedID)) {
+      selection.value = { kind: 'entity', id: requestedID }
+    } else if (requestedKind === 'link' && graph.links.some(link => link.canonical_id === requestedID)) {
+      selection.value = { kind: 'link', id: requestedID }
+    } else {
+      const selectionExists =
+        selection.value?.kind === 'entity'
+          ? graph.entities.some(entity => entity.canonical_id === selection.value?.id)
+          : graph.links.some(link => link.canonical_id === selection.value?.id)
+      if (!selectionExists) {
+        const firstEntity = graph.entities[0]
+        selection.value = firstEntity ? { kind: 'entity', id: firstEntity.canonical_id } : null
+      }
     }
 
     if (!target.value) target.value = graph.bindings[0]?.role ?? graph.entities[0]?.canonical_id ?? ''

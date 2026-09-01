@@ -1,27 +1,31 @@
 <script setup lang="ts">
-import { Search } from '@element-plus/icons-vue'
 import { useQuery } from '@tanstack/vue-query'
 import DOMPurify from 'dompurify'
 import MarkdownIt from 'markdown-it'
 import { useI18n } from 'vue-i18n'
 import { getDocument, getKnowledge } from '../api'
 import AsyncState from '../components/AsyncState.vue'
+import FilterToolbar from '../components/FilterToolbar.vue'
 import PageHeader from '../components/PageHeader.vue'
 
 const { t } = useI18n()
+const route = useRoute()
 const knowledgeQuery = useQuery({ queryKey: ['knowledge'], queryFn: getKnowledge })
 const selectedDocument = ref('')
-const searchText = ref('')
-const scopeFilter = ref('')
+const searchText = ref(typeof route.query.search === 'string' ? route.query.search : '')
+const scopeFilter = ref('all')
 const markdown = new MarkdownIt({ html: false, linkify: true, typographer: true })
 
-const scopeOptions = computed(() => {
-  return [...new Set(knowledgeQuery.data.value?.documents.map(document => document.scope_id) ?? [])].sort()
-})
+const scopeOptions = computed(() => [
+  { value: 'all', label: t('knowledge.allScopes') },
+  ...[...new Set(knowledgeQuery.data.value?.documents.map(document => document.scope_id) ?? [])]
+    .sort()
+    .map(scope => ({ value: scope, label: scope })),
+])
 const filteredDocuments = computed(() => {
   const term = searchText.value.trim().toLocaleLowerCase()
   return (knowledgeQuery.data.value?.documents ?? []).filter(document => {
-    if (scopeFilter.value && document.scope_id !== scopeFilter.value) return false
+    if (scopeFilter.value !== 'all' && document.scope_id !== scopeFilter.value) return false
     if (!term) return true
     const associations = document.associations.flatMap(association => [
       association.object_id,
@@ -35,8 +39,13 @@ const filteredDocuments = computed(() => {
 })
 
 watch(
-  filteredDocuments,
-  documents => {
+  [filteredDocuments, () => route.query.document],
+  ([documents, documentQuery]) => {
+    const requested = typeof documentQuery === 'string' ? documentQuery : ''
+    if (requested && documents.some(document => document.id === requested)) {
+      selectedDocument.value = requested
+      return
+    }
     if (!documents.some(document => document.id === selectedDocument.value)) {
       selectedDocument.value = documents[0]?.id ?? ''
     }
@@ -73,26 +82,16 @@ const empty = computed(() => Boolean(knowledgeQuery.data.value && !knowledgeQuer
     >
       <ElContainer class="knowledge-view__workspace">
         <ElAside class="knowledge-view__index" width="296px">
-          <div class="knowledge-view__filters">
-            <ElInput
-              v-model="searchText"
-              clearable
-              :placeholder="t('knowledge.search')"
-              :aria-label="t('knowledge.search')"
-            >
-              <template #prefix
-                ><ElIcon><Search /></ElIcon
-              ></template>
-            </ElInput>
-            <ElSelect
-              v-model="scopeFilter"
-              clearable
-              :placeholder="t('knowledge.allScopes')"
-              :aria-label="t('knowledge.scopeFilter')"
-            >
-              <ElOption v-for="scope in scopeOptions" :key="scope" :label="scope" :value="scope" />
-            </ElSelect>
-          </div>
+          <FilterToolbar
+            v-model:search="searchText"
+            v-model:filter="scopeFilter"
+            class="knowledge-view__filters"
+            layout="stacked"
+            :search-placeholder="t('knowledge.search')"
+            :search-label="t('knowledge.search')"
+            :filter-label="t('knowledge.scopeFilter')"
+            :options="scopeOptions"
+          />
 
           <div class="knowledge-view__document-scroll">
             <ElMenu
@@ -144,7 +143,7 @@ const empty = computed(() => Boolean(knowledgeQuery.data.value && !knowledgeQuer
                   type="info"
                   effect="light"
                 >
-                  {{ item.object_type }} · {{ item.object_id }}
+                  {{ item.object_type }} · {{ item.object_id }} · {{ item.ref }}
                 </ElTag>
               </footer>
             </template>
@@ -183,9 +182,6 @@ const empty = computed(() => Boolean(knowledgeQuery.data.value && !knowledgeQuer
 }
 
 .knowledge-view__filters {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 112px;
-  gap: var(--locus-space-3);
   padding-bottom: var(--locus-space-4);
 }
 
@@ -324,10 +320,6 @@ const empty = computed(() => Boolean(knowledgeQuery.data.value && !knowledgeQuer
 }
 
 @media (max-width: 600px) {
-  .knowledge-view__filters {
-    grid-template-columns: 1fr;
-  }
-
   .knowledge-view__document-header {
     align-items: flex-start;
     flex-direction: column;

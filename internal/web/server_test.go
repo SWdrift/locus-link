@@ -31,8 +31,24 @@ func TestContextAndAPIOnlyRoot(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&value); err != nil {
 		t.Fatal(err)
 	}
-	if value.ActiveScope.ID != "project.web" || value.Runtime.CurrentEntity != "project.web::workstation" || value.Runtime.Vantage != "office-lan" {
+	if value.ActiveScope.ID != "project.web" || value.Runtime.CurrentEntity != "project.web::workstation" ||
+		value.Runtime.Vantage != "office-lan" || value.Root.RootOrigin != "explicit" ||
+		value.ObservationStore == "" || value.Completeness != locus.Complete {
 		t.Fatalf("unexpected context: %#v", value)
+	}
+	if value.ImportEdges == nil || value.BlockedImports == nil {
+		t.Fatalf("context collection fields must encode as arrays: %#v", value)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "http://localhost/api/v0/validate", nil)
+	response = httptest.NewRecorder()
+	server.http.Handler.ServeHTTP(response, request)
+	var validation validationResponse
+	if err := json.NewDecoder(response.Body).Decode(&validation); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusOK || !validation.Valid || validation.BlockedImports == nil {
+		t.Fatalf("unexpected complete validation response %d: %#v", response.Code, validation)
 	}
 
 	request = httptest.NewRequest(http.MethodGet, "http://localhost/api/v0/graph", nil)
@@ -114,6 +130,31 @@ func TestContextAndAPIOnlyRoot(t *testing.T) {
 	server.http.Handler.ServeHTTP(response, request)
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("API-only root response = %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestValidationReportsPartialView(t *testing.T) {
+	registry := writeTestRegistry(t)
+	t.Setenv("LOCUS_STATE_PATH", filepath.Join(registry, "state.db"))
+	t.Setenv("LOCUS_HOME", filepath.Join(registry, "home"))
+	manifest := "api_version: locus/v1\nscope_id: project.web\nimports:\n  remote:\n    scope_id: environment.missing\n    source:\n      kind: url\n      uri: https://example.invalid/registry.zip\n"
+	if err := os.WriteFile(filepath.Join(registry, "scope.yaml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(Config{Registry: registry, From: "workstation", Vantage: "office-lan"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "http://localhost/api/v0/validate", nil)
+	response := httptest.NewRecorder()
+	server.http.Handler.ServeHTTP(response, request)
+	var validation validationResponse
+	if err := json.NewDecoder(response.Body).Decode(&validation); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusOK || validation.Valid || validation.Completeness != locus.Partial ||
+		len(validation.BlockedImports) != 1 || validation.BlockedImports[0].Reason != "missing_active_cache" {
+		t.Fatalf("unexpected validation response %d: %#v", response.Code, validation)
 	}
 }
 

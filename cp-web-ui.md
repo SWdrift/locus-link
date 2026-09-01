@@ -28,7 +28,7 @@
 ### 设计基线
 
 - 视觉目标按优先级固定为现代、清晰、明确；装饰不与信息竞争，颜色、动效和阴影只表达层级、状态或操作反馈。
-- 默认采用紧凑布局：以 `4px` 为基础间距单位，常规控件高度以 `32px` 为基线，正文以 `14px` 为基线；触屏命中区不得因视觉紧凑而小于 `40px`。
+- 默认采用紧凑布局：以 `4px` 为基础间距单位，Input、Select、Tag 等常规控件默认使用 Element Plus `small` 密度，正文以 `14px` 为基线；触屏场景通过控件容器和间距保证命中区，不得靠页面各自放大控件。
 - 页面使用稳定的标题、工具区、内容区和详情区层级；主要操作保持可见，次要操作就近收纳，危险或有副作用的操作不得只依赖图标表达。
 - 颜色、字号、间距、圆角、阴影、层级和状态色必须来自 design token；页面和组件不得继续扩散同义硬编码值。
 - 主题提供 `system`、`light`、`dark` 三种模式，默认跟随系统并允许用户显式覆盖；用户选择只保存在浏览器本地，不进入 Core 或 Registry。
@@ -37,6 +37,11 @@
 - 组件外观优先使用 Element Plus 的组件、variant、size、state、slot 和 theme token；不得为通用按钮、输入框、选择器、菜单、Card、Alert、Tag、Empty、Skeleton 等重写一套视觉样式。自定义 CSS 只用于应用布局、Graph 等产品特有可视化和组件库无法表达的窄差异。
 - 紧凑不是缩小字号或堆叠边框：优先合并重复 Card、复用统一 `PageHeader`/Operational Toolbar、并行展示高频信息，并用 Tabs 等组件收纳互斥详情；页面不得用大块空白代替清晰层级。
 - 稳定、跨页面重复的标题、工具栏、状态表达必须组件化；只出现一次且没有独立行为或约束的标记保持就地，避免为“组件化”制造无职责包装层。
+- 同一交互层级的 Input、Select 与状态控件必须使用相同 Element Plus size；搜索筛选工具栏只允许 inline/stacked 改变排列，不得建立第二套控件密度。更大尺寸只用于有明确层级差异的主操作，并由公共组件统一承担。
+- `PageHeader` 负责页面标题到主体的垂直节奏，页面根布局不得叠加第二份同义 gap。复杂页面只设置一个主工作区 surface；工作区内只能有一个纵向滚动所有者，可展开内容通过增加滚动范围显示，不得压缩相邻 Alert、标题或操作区。
+- Tab 切换、筛选、换页和每页数量调整不得改变页面主工作区或同组数据面板的外部高度；数据不足保留稳定空间，数据超出时只在指定内容区内部滚动。
+- 搜索与筛选必须放在其直接控制的数据 surface 内；并列但可独立浏览的数据表各自维护筛选与分页状态，不设置脱离数据边界的页面级共享筛选条。
+- Border 只用于主 surface 外边界、表格语义网格、分栏边界或必须持续可见的状态分隔；同一 surface 内的标题、筛选与内容优先通过间距、背景层级和排版分组，不连续叠加 divider。
 - 基础字号、行高、字重、间距、圆角与稳定布局尺寸集中在 `src/design-tokens.css`，由前端入口 `src/main.ts` 一次引入；reset、主题语义色与应用壳样式留在 `App.vue`，领域样式留在负责该视觉边界的 SFC。不得建立第二套 token、独立页面样式表或无行为的样式包装组件。
 - 项目自有 CSS class 使用组件或 feature 前缀的 BEM 风格命名，避免 `panel`、`header`、`field` 等无边界通用名称；只有明确跨组件复用且语义稳定的工具类（当前为 `technical-id`）可以不带组件前缀。Element Plus 与 Vue Flow 的第三方 class 不在此规则内。
 - Element Plus 必须通过 `unplugin-vue-components` 与 `unplugin-auto-import` 按需引入；Vue Composition API 同样由 auto-import 提供。只保留 Element Plus dark variables、Vue Flow 基础样式等第三方官方静态 CSS 入口。
@@ -81,7 +86,7 @@
 - Markdown 继续禁用内嵌 HTML并经 DOMPurify 净化；不得通过前端变更扩大外连、脚本、frame、Secret 或 Provider data 暴露面。
 - Knowledge 的文本与 Scope 筛选基于已返回的文档索引元数据在客户端完成；Markdown 必须由 `markdown-it` 渲染并继续经 DOMPurify 净化。
 - Status 搜索、evidence 状态筛选和分页是完整 Status 投影上的客户端展示派生。`/api/v0/status` 仍返回当前 Registry 的完整 Link/Route 快照供 Graph 和汇总复用；SQLite Observation 存储不等同于可分页事件流，因此不得仅为表格分页拆分该契约。
-- Observation 与 Route Evidence 面板使用相同固定高度，表格区域吸收不足一页的数据空白，分页区域保持固定高度和位置；筛选或换页不得造成面板级大范围重排。
+- Observation 与 Route Evidence 面板使用相同固定高度和固定分页区；表格行高统一，默认每页 10 条。用户切换每页数量时只改变表格内部可见数据和滚动范围，不得改变面板外部高度。
 - 破坏 `/api/v0` 字段、语义、副作用或安全边界时，先更新上位设计与契约并迁移所有调用方；不得用前端兼容分支掩盖契约漂移。
 - 保持组件职责按用户可见能力划分；出现重复查询、重复状态机或跨视图大段重复标记时，抽取已有稳定概念，不为单次使用创建抽象层。
 - 选择或组合 Element Plus 组件时先用公开 props、slots 与 CSS variables；不得依赖 `.el-*` 内部 DOM 结构覆盖样式。确需覆盖时必须说明组件库能力缺口，并将选择器限制在本 feature 根节点。
@@ -95,6 +100,7 @@
 - 可复用的前端决策、验证结论和坑点沉淀到同目录 `cpm-web-ui.md`；一次性进度、临时设计草案和易变代码快照只留在动态任务区。
 
 ## Task Board
+
 
 ### 暂缓
 

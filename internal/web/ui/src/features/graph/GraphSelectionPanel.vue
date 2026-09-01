@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import type { EntityView, GraphView, LinkView, StatusView } from '../../domain/locus'
+import CopyValue from '../../components/CopyValue.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 import type { GraphSelection } from './graph-types'
 
@@ -33,11 +34,21 @@ const linkStatus = computed(() => new Map(props.status?.links.map(item => [item.
     </div>
     <ElDescriptions :column="1" size="small">
       <ElDescriptionsItem :label="t('graph.canonicalId')">
-        <span class="technical-id">{{ selectedEntity.canonical_id }}</span>
+        <CopyValue :value="selectedEntity.canonical_id" />
       </ElDescriptionsItem>
-      <ElDescriptionsItem :label="t('graph.scope')">{{ selectedEntity.scope_id }}</ElDescriptionsItem>
+      <ElDescriptionsItem :label="t('graph.scope')"><CopyValue :value="selectedEntity.scope_id" /></ElDescriptionsItem>
+      <ElDescriptionsItem v-if="selectedEntity.labels" :label="t('details.labels')">
+        <CopyValue :value="JSON.stringify(selectedEntity.labels)" />
+      </ElDescriptionsItem>
       <ElDescriptionsItem :label="t('graph.documents')">
-        {{ selectedEntity.documentation_ids?.length ?? 0 }}
+        <RouterLink
+          v-for="id in selectedEntity.documentation_ids ?? []"
+          :key="id"
+          :to="{ path: '/knowledge', query: { document: id } }"
+        >
+          <ElButton link type="primary">{{ id }}</ElButton>
+        </RouterLink>
+        <span v-if="!selectedEntity.documentation_ids?.length">—</span>
       </ElDescriptionsItem>
     </ElDescriptions>
   </section>
@@ -52,17 +63,30 @@ const linkStatus = computed(() => new Map(props.status?.links.map(item => [item.
     </div>
     <ElDescriptions :column="1" size="small">
       <ElDescriptionsItem :label="t('graph.from')">
-        <span class="technical-id">{{ selectedLink.from }}</span>
+        <CopyValue :value="selectedLink.from" />
       </ElDescriptionsItem>
       <ElDescriptionsItem :label="t('graph.to')">
-        <span class="technical-id">{{ selectedLink.to }}</span>
+        <CopyValue :value="selectedLink.to" />
       </ElDescriptionsItem>
-      <ElDescriptionsItem :label="t('status.provider')">{{ selectedLink.provider }}</ElDescriptionsItem>
+      <ElDescriptionsItem :label="t('graph.scope')"><CopyValue :value="selectedLink.scope_id" /></ElDescriptionsItem>
+      <ElDescriptionsItem :label="t('status.provider')"
+        ><CopyValue :value="selectedLink.provider"
+      /></ElDescriptionsItem>
       <ElDescriptionsItem :label="t('graph.requires')">
         {{ selectedLink.requires?.join(', ') || '—' }}
       </ElDescriptionsItem>
       <ElDescriptionsItem :label="t('graph.provides')">
         {{ selectedLink.provides?.join(', ') || '—' }}
+      </ElDescriptionsItem>
+      <ElDescriptionsItem :label="t('graph.documents')">
+        <RouterLink
+          v-for="id in selectedLink.documentation_ids ?? []"
+          :key="id"
+          :to="{ path: '/knowledge', query: { document: id } }"
+        >
+          <ElButton link type="primary">{{ id }}</ElButton>
+        </RouterLink>
+        <span v-if="!selectedLink.documentation_ids?.length">—</span>
       </ElDescriptionsItem>
     </ElDescriptions>
     <ElButton

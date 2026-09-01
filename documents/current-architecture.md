@@ -159,19 +159,23 @@ stateDiagram-v2
 
 ## 6. 当前 CLI 清单
 
-除 help 外，根命令固定注册九个子命令；结果型命令输出 JSON，`web` 启动长运行的本机 HTTP 服务。
+除 help 外，根命令固定注册十三个子命令；结果型命令输出 JSON，`web` 启动长运行的本机 HTTP 服务。
 
 | 命令 | 当前行为 |
 |---|---|
-| `init` | 创建 `scope.yaml` 与 `entities/links/routes/docs` 目录 |
-| `validate` | 加载并校验 Registry，返回活跃 Scope 与三类对象数量 |
-| `context` | 返回 Scope、imports、bindings、RuntimeContext、Observation Store 路径 |
-| `list [entity\|link\|route]` | 返回排序后的规范 ID |
+| `user init` | 创建用户根 Registry |
+| `init` | 创建 Scope Registry，可选显式用户 import 与项目登记 |
+| `project register\|unregister\|list` | 管理本机项目反向登记 |
+| `refresh [alias-path]` | 显式刷新 remote imports 并原子激活通过校验的 cache |
+| `validate` | 加载并校验 Registry，返回活跃 Scope、三类对象数量与 partial diagnostics |
+| `context` | 返回 root discovery/registration/cache、Scope、imports、bindings、RuntimeContext 与 Observation Store 路径 |
+| `graph` | 返回 Scope、Import、Binding、Entity、Link、Route 与 provenance 的完整声明投影 |
+| `list [binding\|entity\|link\|route]` | 返回排序后的规范 ID |
 | `show <ref-or-id>` | 展开 Binding 或返回 Entity/Link/Route 声明，不附加运行时证据 |
 | `resolve <target> --capability <name>` | 按当前规则筛选显式 Route 并附加既有证据 |
 | `probe <link-or-route-id>` | 执行 safe probe 并追加 Observation |
 | `status [link-or-route-id]` | 查看最新 Link/Route evidence 或按状态汇总 |
-| `web` | 装载 Registry 与本机 Store，启动 loopback HTTP server；Vue Graph/Status/Knowledge 提供声明图、证据、文档、Resolve 与显式 safe Probe，并提供默认中文/英文切换、system/light/dark 主题及 ELK 异步分层图布局 |
+| `web` | 装载 Registry 与本机 Store，启动 loopback HTTP server；Vue Graph/Status/Knowledge/Inspect 呈现声明图、完整诊断、证据、文档、Context、Validate、声明检索、Resolve 与显式 safe Probe，并提供跨视图深链、技术值复制、默认中文/英文切换、system/light/dark 主题及 ELK 异步分层图布局 |
 
 `context`、`resolve`、`probe`、`status` 需要 `--from`；`resolve` 还需要 `--capability`。四个命令都接受 `--vantage` 和 `--mechanism-bindings`，并复用同一个 Runtime Context builder。`web` 的同名 flags 是初始页面上下文；`web` 只允许 loopback `--address`。各命令可用 `--registry` 覆盖发现结果。
 

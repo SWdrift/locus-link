@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -16,10 +17,16 @@ import (
 )
 
 type contextResponse struct {
-	ActiveScope scopeResponse     `json:"active_scope"`
-	Imports     []importResponse  `json:"imports"`
-	Bindings    map[string]string `json:"bindings"`
-	Runtime     runtimeResponse   `json:"runtime"`
+	ActiveScope      scopeResponse         `json:"active_scope"`
+	Root             locus.RootContext     `json:"root"`
+	Imports          []importResponse      `json:"imports"`
+	ImportEdges      []locus.ImportEdge    `json:"import_edges"`
+	Bindings         map[string]string     `json:"bindings"`
+	BindingDetails   []locus.BindingView   `json:"binding_details"`
+	Runtime          locus.RuntimeContext  `json:"runtime"`
+	ObservationStore string                `json:"observation_store"`
+	Completeness     locus.Completeness    `json:"completeness"`
+	BlockedImports   []locus.BlockedImport `json:"blocked_imports"`
 }
 
 type scopeResponse struct {
@@ -31,9 +38,14 @@ type importResponse struct {
 	ScopeID string `json:"scope_id"`
 }
 
-type runtimeResponse struct {
-	CurrentEntity string `json:"current_entity,omitempty"`
-	Vantage       string `json:"vantage"`
+type validationResponse struct {
+	Valid          bool                  `json:"valid"`
+	ActiveScope    string                `json:"active_scope"`
+	Entities       int                   `json:"entities"`
+	Links          int                   `json:"links"`
+	Routes         int                   `json:"routes"`
+	Completeness   locus.Completeness    `json:"completeness"`
+	BlockedImports []locus.BlockedImport `json:"blocked_imports"`
 }
 
 type probeRequest struct {
@@ -54,30 +66,48 @@ type apiHandler struct {
 }
 
 func newHandler(config Config, uiFactory UIFactory) (http.Handler, error) {
-	registry, err := locus.LoadActiveRegistry(config.Registry)
-	if err != nil {
-		return nil, err
-	}
-	currentEntity := ""
-	if config.From != "" {
-		currentEntity, err = registry.ResolveEntity(config.From)
-		if err != nil {
-			return nil, err
-		}
-	}
-	vantage, err := locus.ObservationVantage(config.Vantage)
-	if err != nil {
-		return nil, err
-	}
 	statePath, err := locus.DefaultStatePath()
 	if err != nil {
 		return nil, err
 	}
+	store, err := locus.OpenStore(statePath)
+	if err != nil {
+		return nil, err
+	}
+	registry, root, err := locus.LoadRegistryContext(config.Registry, store)
+	closeErr := store.Close()
+	if err != nil {
+		return nil, err
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	runtime := locus.RuntimeContext{MechanismBindingsSource: config.MechanismBindings}
+	if config.From != "" {
+		runtime, err = locus.BuildRuntime(registry, locus.RuntimeInput{
+			From: config.From, Vantage: config.Vantage, MechanismBindingsPath: config.MechanismBindings,
+		})
+	} else {
+		runtime.Vantage, err = locus.ObservationVantage(config.Vantage)
+	}
+	if err != nil {
+		return nil, err
+	}
+	runtime.CWD, err = os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	providers := locus.NewProviders()
+	runtime.AvailableTools = providers.Available()
 	imports := make([]importResponse, 0, len(registry.Aliases))
 	for alias, scopeID := range registry.Aliases {
 		imports = append(imports, importResponse{Alias: alias, ScopeID: scopeID})
 	}
 	sort.Slice(imports, func(i, j int) bool { return imports[i].Alias < imports[j].Alias })
+	graph, err := registry.Graph()
+	if err != nil {
+		return nil, err
+	}
 	bindings := map[string]string{}
 	for _, binding := range registry.Bindings {
 		if binding.ScopeID == registry.RootScopeID {
@@ -85,11 +115,13 @@ func newHandler(config Config, uiFactory UIFactory) (http.Handler, error) {
 		}
 	}
 	api := &apiHandler{
-		registry: registry, providers: locus.NewProviders(), statePath: statePath,
-		defaultFrom: currentEntity, defaultVantage: vantage, mechanismBindingsPath: config.MechanismBindings,
+		registry: registry, providers: providers, statePath: statePath,
+		defaultFrom: runtime.CurrentEntity, defaultVantage: runtime.Vantage, mechanismBindingsPath: config.MechanismBindings,
 		context: contextResponse{
-			ActiveScope: scopeResponse{ID: registry.RootScopeID}, Imports: imports, Bindings: bindings,
-			Runtime: runtimeResponse{CurrentEntity: currentEntity, Vantage: vantage},
+			ActiveScope: scopeResponse{ID: registry.RootScopeID}, Root: root, Imports: imports,
+			ImportEdges: append([]locus.ImportEdge{}, registry.ImportEdges...), Bindings: bindings,
+			BindingDetails: graph.Bindings, Runtime: runtime, ObservationStore: statePath,
+			Completeness: registry.Completeness, BlockedImports: append([]locus.BlockedImport{}, registry.BlockedImports...),
 		},
 	}
 	var ui http.Handler = http.NotFoundHandler()
@@ -167,9 +199,11 @@ func (a *apiHandler) getDocument(response http.ResponseWriter, request *http.Req
 }
 
 func (a *apiHandler) getValidation(response http.ResponseWriter, _ *http.Request) {
-	writeJSON(response, http.StatusOK, map[string]any{
-		"valid": true, "active_scope": a.registry.RootScopeID,
-		"entities": len(a.registry.Entities), "links": len(a.registry.Links), "routes": len(a.registry.Routes),
+	writeJSON(response, http.StatusOK, validationResponse{
+		Valid: a.registry.Completeness == locus.Complete, ActiveScope: a.registry.RootScopeID,
+		Entities: len(a.registry.Entities), Links: len(a.registry.Links), Routes: len(a.registry.Routes),
+		Completeness:   a.registry.Completeness,
+		BlockedImports: append([]locus.BlockedImport{}, a.registry.BlockedImports...),
 	})
 }
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import CopyValue from '../../components/CopyValue.vue'
 import type { EvidenceStatus, GraphView, StatusView } from '../../domain/locus'
 import StatusBadge from '../../components/StatusBadge.vue'
 
@@ -35,11 +36,24 @@ const routeStatus = computed<EvidenceStatus>(() => {
 
     <template v-if="activeRoute">
       <div class="graph-route-panel__heading">
-        <strong class="technical-id">{{ activeRoute.canonical_id }}</strong>
+        <CopyValue :value="activeRoute.canonical_id" />
         <StatusBadge :status="routeStatus" />
       </div>
+      <ElDescriptions :column="1" size="small">
+        <ElDescriptionsItem :label="t('graph.scope')"><CopyValue :value="activeRoute.scope_id" /></ElDescriptionsItem>
+        <ElDescriptionsItem :label="t('graph.documents')">
+          <RouterLink
+            v-for="id in activeRoute.documentation_ids ?? []"
+            :key="id"
+            :to="{ path: '/knowledge', query: { document: id } }"
+          >
+            <ElButton link type="primary">{{ id }}</ElButton>
+          </RouterLink>
+          <span v-if="!activeRoute.documentation_ids?.length">—</span>
+        </ElDescriptionsItem>
+      </ElDescriptions>
       <ol class="graph-route-panel__steps">
-        <li v-for="step in activeRoute.steps" :key="step" class="technical-id">{{ step }}</li>
+        <li v-for="step in activeRoute.steps" :key="step"><CopyValue :value="step" /></li>
       </ol>
       <ElButton
         type="primary"

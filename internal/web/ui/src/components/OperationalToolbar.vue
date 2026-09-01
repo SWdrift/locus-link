@@ -3,15 +3,21 @@ import { useI18n } from 'vue-i18n'
 import { useOperationalContext } from '../operational-context'
 import { usePreferences } from '../preferences'
 
-defineProps<{
+const props = defineProps<{
   scopeName: string
-  connectionState: 'error' | 'valid' | 'local'
+  connectionState: 'error' | 'valid' | 'partial' | 'loading'
   connectionText: string
 }>()
 
 const { t } = useI18n()
 const context = useOperationalContext()
 const preferences = usePreferences()
+const serviceTagType = computed(() => {
+  if (props.connectionState === 'error') return 'danger'
+  if (props.connectionState === 'partial') return 'warning'
+  if (props.connectionState === 'loading') return 'info'
+  return 'success'
+})
 </script>
 
 <template>
@@ -27,7 +33,7 @@ const preferences = usePreferences()
         <ElInput
           v-model="context.from"
           class="locus-toolbar__control locus-toolbar__control--entity"
-          size="default"
+          size="small"
           :aria-label="t('context.currentEntity')"
         />
       </label>
@@ -36,7 +42,7 @@ const preferences = usePreferences()
         <ElInput
           v-model="context.vantage"
           class="locus-toolbar__control"
-          size="default"
+          size="small"
           :aria-label="t('context.vantage')"
         />
       </label>
@@ -45,7 +51,7 @@ const preferences = usePreferences()
         <ElSelect
           v-model="preferences.locale.value"
           class="locus-toolbar__preference"
-          size="default"
+          size="small"
           :aria-label="t('settings.language')"
         >
           <ElOption label="简体中文" value="zh-CN" />
@@ -57,7 +63,7 @@ const preferences = usePreferences()
         <ElSelect
           v-model="preferences.themeMode.value"
           class="locus-toolbar__preference"
-          size="default"
+          size="small"
           :aria-label="t('settings.theme')"
         >
           <ElOption :label="t('settings.system')" value="system" />
@@ -67,14 +73,11 @@ const preferences = usePreferences()
       </label>
       <div class="locus-toolbar__field">
         <span>{{ t('app.service') }}</span>
-        <ElTag
-          class="locus-toolbar__service"
-          size="default"
-          :type="connectionState === 'error' ? 'danger' : 'success'"
-          effect="plain"
-        >
-          {{ connectionText }}
-        </ElTag>
+        <RouterLink class="locus-toolbar__service-link" :to="{ path: '/inspect', query: { tab: 'validation' } }">
+          <ElTag class="locus-toolbar__service" size="small" :type="serviceTagType" effect="plain">
+            {{ connectionText }}
+          </ElTag>
+        </RouterLink>
       </div>
     </div>
   </div>
@@ -136,8 +139,13 @@ const preferences = usePreferences()
   width: 104px;
 }
 
+.locus-toolbar__service-link {
+  display: inline-flex;
+  text-decoration: none;
+}
+
 .locus-toolbar__service {
-  height: var(--locus-control-height);
+  height: var(--el-component-size-small);
 }
 
 @media (max-width: 1180px) {
