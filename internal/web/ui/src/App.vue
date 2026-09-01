@@ -76,41 +76,6 @@ const connectionText = computed(() => {
 </template>
 
 <style>
-:root {
-  font-family: var(--locus-font-family-sans);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#app {
-  min-width: 320px;
-  min-height: 100%;
-  margin: 0;
-}
-
-button,
-input {
-  font: inherit;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-h1,
-h2,
-h3,
-p {
-  margin: 0;
-}
-
 .locus-app {
   --status-success: #2e7d57;
   --status-failure: #c2413a;
