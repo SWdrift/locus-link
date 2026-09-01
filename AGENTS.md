@@ -9,6 +9,11 @@
 - Web 联调：分别在两个终端运行 `.\scripts\start-web-api.ps1` 和 `.\scripts\start-web-ui.ps1`。该方式跳过内嵌 Web UI 构建，适合快速验证 Web 端更改。
 - 使用 pwsh 而不是 powershell。
 
+## Agent Skill 维护
+
+- [Use Locus Skill](.agents/skills/use-locus/SKILL.md) 是 Agent 使用已安装 `locus` 的操作指南。
+- CLI 命令、flag、JSON 字段、退出码、Registry discovery、Probe/refresh 副作用或确认边界变化时，必须在同一改动中同步更新该 Skill。
+
 ## 工作区安全
 
 - 所有读取、写入、生成文件、子进程工作目录、fixtures 和测试状态都必须保留在本仓库工作区内。
