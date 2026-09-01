@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@11.24.0",
   "scripts": {
-    "check:links": "remark \"../../*.md\" \"../../documents/**/*.md\" \"../../test/**/*.md\" \"../../test/e2e/case/**/.locus/**/*.md\" --frail --rc-path remark.config.js"
+    "check:links": "remark \"../../*.md\" \"../../documents/**/*.md\" \"../../scripts/**/*.md\" \"../../test/**/*.md\" \"../../test/e2e/case/**/.locus/**/*.md\" --frail --rc-path remark.config.js"
   },
   "devDependencies": {
     "remark-cli": "^12.0.1",

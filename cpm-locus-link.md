@@ -61,8 +61,8 @@
 
 ## Verified Implementation Baseline
 
-- Go module，单一 `locus` executable；Cobra adapter 位于 `internal/cli/`，领域模型、Resolver、Provider 和 Store 位于 `internal/locus/`。
-- 本机 Web 入口位于 `internal/web/`，通过 `locus web` 启动 loopback HTTP server；Vue/Vite 资源编译后嵌入同一 executable。`/api/v0` 直接复用 Core 提供 Context、Graph、Status、Knowledge、Validate、Resolve 与 safe Probe。
+- 可交付 executable 的组成、构建依赖与开发组合以[产物设计](documents/design/产物设计.md)为准；Cobra adapter 位于 `internal/cli/`，领域模型、Resolver、Provider 和 Store 位于 `internal/locus/`。
+- 本机 Web API 位于 `internal/web/`，通过 `locus web` 启动 loopback HTTP server，直接复用 Core 提供 Context、Graph、Status、Knowledge、Validate、Resolve 与 safe Probe。
 - Graph 投影不暴露 Provider data；Knowledge 只读取声明引用且经符号链接解析后仍位于所属 Scope `docs/` 的文件，同路径多 association 去重；Markdown 禁用 HTML 并经 DOMPurify 净化。
 - Web 只接受 loopback listener 与本机 Host，拒绝 cross-site fetch；读取和 Resolve 不写状态，只有显式 Probe 追加 Link Observation。
 - Project 可以按本地路径 import Environment，alias 归一化到 `<scope-id>::<local-id>` canonical identity。

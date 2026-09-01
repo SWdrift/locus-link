@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+type UIFactory func() (http.Handler, error)
+
 type Config struct {
 	Registry          string
 	From              string
@@ -22,8 +24,8 @@ type Server struct {
 	http *http.Server
 }
 
-func New(config Config) (*Server, error) {
-	handler, err := newHandler(config)
+func New(config Config, uiFactory UIFactory) (*Server, error) {
+	handler, err := newHandler(config, uiFactory)
 	if err != nil {
 		return nil, err
 	}

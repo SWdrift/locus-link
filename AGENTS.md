@@ -4,12 +4,7 @@
 
 在仓库根目录使用 PowerShell 运行：
 
-| 指令 | 用途 |
-| --- | --- |
-| `./scripts/build.ps1` | 构建 CLI 到 `temp/bin/locus.exe`。 |
-| `./scripts/test-e2e.ps1` | 运行 workspace end-to-end CLI 流程，并保留 `temp/e2e-run/` 产物。 |
-| `./scripts/start-test-web.ps1` | 使用已保留的 E2E 产物启动本地测试 Web UI；可用 `-Refresh` 重建产物、`-NoBrowser` 禁止自动打开浏览器、`-Address 127.0.0.1:<端口>` 更改监听地址。 |
-| `./scripts/verify.ps1` | 运行完整 Go 测试、Web UI 构建和 Markdown 链接检查。 |
+脚本快捷入口及职责见 [`scripts/README.md`](scripts/README.md)；带 Web UI 与不带 Web UI 的构建边界见[产物设计](documents/design/产物设计.md)。
 
 ## 工作区安全
 

@@ -4,7 +4,7 @@
 
 ## 1. 总体结构与数据流
 
-当前发布一个 `locus` executable：Cobra CLI 与 loopback WebUI 共用 `internal/locus` Core。声明保存在 YAML Registry 中，运行观测追加到本机 SQLite；Resolve 读取声明和既有 Observation，但不会主动 Probe。
+当前构建带内嵌 Web UI 的 `locus.exe` 与不带页面资源的 `locus-backend.exe`；两者的 Cobra CLI 与 loopback Web API 共用 `internal/locus` Core，具体边界见[产物设计](design/产物设计.md)。声明保存在 YAML Registry 中，运行观测追加到本机 SQLite；Resolve 读取声明和既有 Observation，但不会主动 Probe。
 
 ```mermaid
 flowchart LR

@@ -34,5 +34,4 @@
 ## Case Conventions
 
 - `test/e2e/case/` 的用户可见名称、文档标题和正文以中文展示；canonical ID、Binding role、capability、Provider、路径以及协议字段保持稳定英文标识。
-- Windows 保留案例 Web UI 的快捷入口是 `scripts/start-test-web.ps1`；默认复用 `temp/e2e-run/`，`-Refresh` 先运行完整 E2E 以重新生成当前源码对应的产物。
-- 前端 HMR 与案例后端的联合调试入口是 `pnpm --dir internal/web/ui run dev:full`：复用 `temp/e2e-run/` 后端 fixture，在 `127.0.0.1:5173` 启动 Vite，并把 `/api` 代理到案例后端；`Ctrl+C` 必须同时清理两个子进程。
+- Web 产物组成以[产物设计](documents/design/产物设计.md)为准，构建与调试入口以 [`scripts/README.md`](scripts/README.md) 为准。

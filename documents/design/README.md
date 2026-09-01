@@ -13,13 +13,14 @@
 - [用户级 Locus 设计](base-用户级Locus设计.md)：用户根 Scope、项目反向登记、remote cache/refresh、Observation Store 与本机状态。
 - [基础系统设计](base-系统设计.md)：引用核心概念后，定义知识模型、运行时视图、Core 闭环、机制边界与对外投影的处理不变量。
 - [基础数据设计](base-数据设计.md)：declaration/source/context/evidence provenance、持久化和 Secret 边界。
+- [产物设计](产物设计.md)：定义带 Web UI 与不带 Web UI 的 executable、构建依赖和开发组合。
 - [测试设计](测试设计.md)：native Core 基线、Scope graph、用户级 Locus、remote cache/refresh 和公共不变量。
 - [当前实现快照](../current-architecture.md)：当前代码、E2E 覆盖和设计偏差。
 
 ## 阅读顺序
 
 - 用户和 Registry 作者：产品设计 → 公共契约 → Scope 设计 → 用户级 Locus 设计。
-- 实现者：产品设计 → 公共契约 → Scope 设计 → 用户级 Locus 设计 → 系统设计 → 数据流与存储设计 → 测试设计 → 当前实现快照。
+- 实现者：产品设计 → 公共契约 → Scope 设计 → 用户级 Locus 设计 → 系统设计 → 数据流与存储设计 → 产物设计 → 测试设计 → 当前实现快照。
 
 ## 管理规则
 

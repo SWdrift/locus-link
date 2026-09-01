@@ -1,4 +1,4 @@
-package web
+package webui
 
 import (
 	"embed"
@@ -8,11 +8,11 @@ import (
 	"strings"
 )
 
-//go:embed ui/dist
+//go:embed dist
 var embeddedUI embed.FS
 
-func uiHandler() (http.Handler, error) {
-	dist, err := fs.Sub(embeddedUI, "ui/dist")
+func Handler() (http.Handler, error) {
+	dist, err := fs.Sub(embeddedUI, "dist")
 	if err != nil {
 		return nil, err
 	}

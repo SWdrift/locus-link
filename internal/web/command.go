@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func Command(stdout io.Writer) *cobra.Command {
+func Command(stdout io.Writer, uiFactory UIFactory) *cobra.Command {
 	config := Config{}
 	command := &cobra.Command{
 		Use:   "web",
@@ -17,7 +17,7 @@ func Command(stdout io.Writer) *cobra.Command {
 			if command.Flags().Changed("json") {
 				return errors.New("--json is not supported by web")
 			}
-			server, err := New(config)
+			server, err := New(config, uiFactory)
 			if err != nil {
 				return err
 			}

@@ -12,11 +12,11 @@ import (
 	"locus-link/internal/locus"
 )
 
-func TestContextAndEmbeddedUI(t *testing.T) {
+func TestContextAndAPIOnlyRoot(t *testing.T) {
 	registry := writeTestRegistry(t)
 	t.Setenv("LOCUS_STATE_PATH", filepath.Join(registry, "state.db"))
 	t.Setenv("LOCUS_HOME", filepath.Join(registry, "home"))
-	server, err := New(Config{Registry: registry, From: "workstation", Vantage: "office-lan"})
+	server, err := New(Config{Registry: registry, From: "workstation", Vantage: "office-lan"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,15 +112,15 @@ func TestContextAndEmbeddedUI(t *testing.T) {
 	request = httptest.NewRequest(http.MethodGet, "http://localhost/graph", nil)
 	response = httptest.NewRecorder()
 	server.http.Handler.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `<div id="app"></div>`) {
-		t.Fatalf("embedded UI response = %d: %s", response.Code, response.Body.String())
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("API-only root response = %d: %s", response.Code, response.Body.String())
 	}
 }
 
 func TestServerRejectsNonLocalAccess(t *testing.T) {
 	registry := writeTestRegistry(t)
 	t.Setenv("LOCUS_STATE_PATH", filepath.Join(registry, "state.db"))
-	server, err := New(Config{Registry: registry, Vantage: "office-lan"})
+	server, err := New(Config{Registry: registry, Vantage: "office-lan"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

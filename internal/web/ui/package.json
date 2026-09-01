@@ -7,7 +7,6 @@
   "scripts": {
     "build": "pnpm run typecheck && vite build",
     "dev": "vite",
-    "dev:full": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ../../../scripts/start-test-web.ps1 -Dev -NoBrowser",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json"
   },
   "dependencies": {

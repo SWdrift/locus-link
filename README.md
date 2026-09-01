@@ -63,35 +63,9 @@ Registry 使用严格 `locus/v1` YAML 声明 Scope、Import、Binding、Entity�
 
 ## Build and Verification
 
-需要 Go 1.26 或兼容版本。
-
-PowerShell：
-
-```powershell
-./scripts/build.ps1
-./scripts/test-e2e.ps1
-./scripts/verify.ps1
-```
-
-`build.ps1` 将 CLI 构建到 `temp/bin/locus.exe`；`test-e2e.ps1` 运行 native workspace 与 Scope graph 两个 E2E；`verify.ps1` 依次运行完整 Go 测试（含 E2E）、Web UI 构建和 Markdown 链接检查。脚本使用的 cache 和测试状态均保留在仓库 `temp/` 下。
-
-POSIX shell：
-
-```sh
-mkdir -p temp/bin
-go build -o temp/bin/locus ./cmd/locus
-go test ./...
-```
+需要 Go 1.26 或兼容版本。PowerShell 快捷入口及职责见 [`scripts/README.md`](scripts/README.md)，两种 executable 的组成与用途见[产物设计](documents/design/产物设计.md)。
 
 E2E declarations 和 simulated device state 位于 `test/e2e/case/`；native 与 Scope graph 完整运行产物分别保留在 `temp/e2e-run/native/` 和 `temp/e2e-run/scope/`。
-
-Windows 可直接启动保留案例的 Web UI：
-
-```powershell
-./scripts/start-test-web.ps1
-```
-
-首次运行或需要用当前源码重新生成 E2E 产物时添加 `-Refresh`；脚本启动中文优先的 Project Alpha 页面，按 `Ctrl+C` 停止服务。
 
 ## Documentation
 

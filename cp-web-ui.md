@@ -18,7 +18,7 @@
 - 主作用域：`internal/web/ui/src/`、`internal/web/ui/index.html`、Vite 与 TypeScript 配置、前端依赖清单。
 - 前端入口：`src/main.ts`、`src/App.vue`、`src/router.ts`；当前视图为 Graph、Status、Knowledge。
 - 数据边界：`src/api.ts` 消费本机 `/api/v0`；公共可观察行为以 [`documents/design/contracts/Web契约.md`](documents/design/contracts/Web契约.md) 为准。
-- 直接集成方：`internal/web/assets.go` 的构建产物嵌入，以及 `internal/web/server.go`、`internal/web/api.go` 提供的 SPA 与 API。
+- 直接集成方：`internal/web/ui/assets.go` 提供可选页面 Handler，`internal/web/server.go`、`internal/web/api.go` 提供 Web API；构建组合以[产物设计](documents/design/产物设计.md)为准。
 - 验证边界：前端构建、实际浏览器中的目标流程，以及命中 Web 行为时的工作区本地 E2E CLI 流程。
 - 不在本平面内独立改变 Core 领域语义、Registry/Observation 模型、CLI 契约、HTTP 安全边界或 `/api/v0` 版本策略；这些改动必须提升到 `cp-locus-link.md` 协同处理。
 - `internal/web/ui/dist/` 是生成产物，不作为手工设计或编辑入口。

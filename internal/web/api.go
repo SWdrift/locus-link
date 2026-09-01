@@ -53,7 +53,7 @@ type apiHandler struct {
 	context               contextResponse
 }
 
-func newHandler(config Config) (http.Handler, error) {
+func newHandler(config Config, uiFactory UIFactory) (http.Handler, error) {
 	registry, err := locus.LoadActiveRegistry(config.Registry)
 	if err != nil {
 		return nil, err
@@ -92,9 +92,12 @@ func newHandler(config Config) (http.Handler, error) {
 			Runtime: runtimeResponse{CurrentEntity: currentEntity, Vantage: vantage},
 		},
 	}
-	ui, err := uiHandler()
-	if err != nil {
-		return nil, err
+	var ui http.Handler = http.NotFoundHandler()
+	if uiFactory != nil {
+		ui, err = uiFactory()
+		if err != nil {
+			return nil, err
+		}
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v0/context", api.getContext)

@@ -22,6 +22,9 @@ try {
     $env:GOMODCACHE = Join-Path $repo 'temp/.go-mod-cache'
     $env:GOPATH = Join-Path $repo 'temp/.go-path'
     Set-Location $repo
+    & (Join-Path $repo 'scripts/build-web-ui.ps1')
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
     Remove-Item -LiteralPath (Join-Path $repo 'temp/e2e-run') -Recurse -Force -ErrorAction SilentlyContinue
 
     & $goExecutable test ./test -run 'EndToEnd$' -v
