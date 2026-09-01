@@ -1,2 +1,4 @@
 api_version: locus/v1
 scope_id: environment.customer-a
+imports:
+  platform: ../../../platform-shared/.locus/registry

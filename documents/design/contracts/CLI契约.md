@@ -133,7 +133,9 @@ Partial view 中，只允许 Probe 最终 view 内已完整加载并校验的 Li
 
 ### `refresh`
 
-`locus refresh [alias-path] [--registry]` 无参数时刷新根 closure 的全部 remote imports；参数按 normalized alias path 只刷新目标 edge。JSON 返回 `status: success|partial|failure`、`activated`、`retained`、`refresh_errors`、`completeness`、`blocked_imports`。一项或多项获取或校验失败仍输出结果并退出 `5`；输入或声明错误退出 `2`。
+`locus refresh [alias-path] [--registry] [--allow-regression --expected-candidate-digest <sha256:...>]` 无参数时刷新根 closure 的全部 remote imports；参数按 normalized alias path 只刷新目标 edge。获取先写入隔离 candidate，再以 overlay cache 构建完整 Dependency Snapshot，并与 active snapshot 生成稳定 diff。JSON 返回 `status: success|partial|failure|confirmation_required`、`active_snapshot`、`candidate_snapshot`、`diff`、`activated`、`retained`、`refresh_errors`、`completeness` 与 `blocked_imports`。
+
+Candidate 自身无效时禁止激活；新增 blocked import、cycle、authority conflict 或 completeness 回退时保持 active 不变并退出 `6`。调用方审阅 snapshot 后必须同时提交 `--allow-regression` 与该结果的 `--expected-candidate-digest`；candidate 已变化或缺少 digest 时拒绝激活。涉及的 edge cache 与无冲突 Scope authority 在单个 SQLite transaction 中切换。一项或多项获取或校验失败仍输出结果并退出 `5`；输入或声明错误退出 `2`。
 
 ### `validate` 与 `web`
 
@@ -179,7 +181,7 @@ binding key 必须解析为当前 Declared View 中的 Link；文件拒绝未知
 | `init` | `--registry --scope-id --import-user --register` |
 | `project register` | `--registry` |
 | `project unregister`、`project list` | 无 |
-| `refresh` | `--registry` |
+| `refresh` | `--registry --allow-regression --expected-candidate-digest` |
 | `validate`、`graph`、`list`、`show` | `--registry` |
 | `context` | `--registry --from --vantage --mechanism-bindings` |
 | `resolve` | `--registry --from --vantage --mechanism-bindings --capability` |
@@ -206,6 +208,7 @@ binding key 必须解析为当前 Declared View 中的 Link；文件拒绝未知
 | `3` | Resolve unresolved、ambiguous 或 incomplete |
 | `4` | Probe 已完成但结果失败；stdout 仍有稳定结果 |
 | `5` | Refresh 至少一项获取或校验失败；stdout 仍有结构化结果 |
+| `6` | Refresh candidate 会使依赖视图回退，active 保持不变；stdout 携带快照与 diff |
 
 ## 测试
 

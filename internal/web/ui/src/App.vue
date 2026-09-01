@@ -7,27 +7,37 @@ import AsyncState from './components/AsyncState.vue'
 import OperationalToolbar from './components/OperationalToolbar.vue'
 import { provideOperationalContext } from './operational-context'
 import { usePreferences } from './preferences'
+import { useScopeID } from './scope-context'
 
 const { t } = useI18n()
 const preferences = usePreferences()
-const contextQuery = useQuery({ queryKey: ['context'], queryFn: getContext })
-const validationQuery = useQuery({ queryKey: ['validation'], queryFn: getValidation })
+const scopeID = useScopeID()
+const contextQuery = useQuery({
+  queryKey: computed(() => ['context', scopeID.value]),
+  queryFn: () => getContext(scopeID.value || undefined),
+})
+const validationQuery = useQuery({
+  queryKey: computed(() => ['validation', scopeID.value]),
+  queryFn: () => getValidation(scopeID.value || undefined),
+})
 const operationalContext = reactive({ from: '', vantage: '' })
 const sidebarCollapsed = ref(false)
 
 provideOperationalContext(operationalContext)
 
 watch(
-  () => contextQuery.data.value,
-  value => {
+  [() => contextQuery.data.value, scopeID],
+  ([value]) => {
     if (!value) return
-    if (!operationalContext.from) operationalContext.from = value.runtime.current_entity ?? ''
-    if (!operationalContext.vantage) operationalContext.vantage = value.runtime.vantage
+    operationalContext.from = value.runtime.current_entity ?? ''
+    operationalContext.vantage = value.runtime.vantage
   },
   { immediate: true },
 )
 
-const scopeName = computed(() => contextQuery.data.value?.active_scope.id ?? t('common.loading'))
+const scopeName = computed(() =>
+  scopeID.value ? (contextQuery.data.value?.active_scope.id ?? t('common.loading')) : t('app.noActiveScope'),
+)
 const connectionState = computed<'error' | 'valid' | 'partial' | 'loading'>(() => {
   if (contextQuery.isError.value || validationQuery.isError.value) return 'error'
   if (contextQuery.isPending.value || validationQuery.isPending.value) return 'loading'

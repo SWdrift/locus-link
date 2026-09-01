@@ -13,6 +13,11 @@
 - 主题支持 `system`、`light`、`dark`，默认跟随系统；语言和主题偏好只存浏览器本地，不进入 locus-link Core、Registry 或 Observation。
 - Graph 继续由 Vue Flow 渲染，ELK layered algorithm 负责稳定节点布局；Link 由 Vue Flow 基于实时 source/target handle 计算正交路径，因此节点拖动时路径和标签同步移动。Route 和 evidence 仍是现有声明图上的视觉 overlay。
 - 项目自有 CSS class 使用组件或 feature 前缀的 BEM 风格；`technical-id` 是当前唯一明确的跨组件工具类例外。Element Plus/Vue Flow 的第三方 class 不纳入项目命名约束。
+- 信息架构分为全局 Locus 与当前 Scope 工作区：稳定全局路由是 `/locus/catalog`、`/locus/dependencies`，Scope 能力路由是 `/scopes/:scopeId/{graph,status,knowledge,inspect}`。侧栏永久显示 Locus，只在 Scope 路由显示工作区菜单。
+- Dependency Graph 的单击节点只维护 `selected` 深链和详情，不切换 active Scope；后端标记为 openable 的卡片支持双击显式进入该 Scope 的 Graph，详情栏按钮保留等价的可访问操作。
+- Dependency Graph 默认在前端合并 Catalog 全部 openable Root 的完整 Dependency Snapshot，并按 canonical Scope identity 去重；Root、搜索和问题筛选只派生子图。
+- Scope Catalog 与 Dependency Graph 是两个独立侧栏页面，不使用同页 Tabs；前者管理入口清单，后者专注总图与子图筛选。
+- Link Status 的 Provider 是声明事实；Observation 缺失时仍显示 Provider，状态为 unknown、时间为“从未”。没有 current Entity 的空 Scope 直接显示空状态，不保持查询 loading。
 
 ## Implementation Rationale
 
@@ -22,16 +27,16 @@
 - Input、Select、Tag 统一显式采用 Element Plus `small` 作为应用紧凑密度；Operational Toolbar 不再单独放大为 `default`。排列差异由布局处理，不通过页面级控件尺寸分叉。
 - 响应式验收使用 `360px`、`768px`、`1280px`、`1440px` 四个代表视口，布局在断点之间保持流式；核心 operational context 在任一尺寸均不可被隐藏。
 - Graph、Status、Knowledge、Inspect 路由延迟加载；基础 design token 由 `src/main.ts` 引入 `src/design-tokens.css`，reset、主题语义色与应用壳样式归 `App.vue`，领域样式归负责该视觉边界的 SFC。
-- `from + vantage` 由单一 Operational Context provider 管理，Graph 与 Status 复用同一个 Status query key；Knowledge 不再接收无关 context props。
+- `from + vantage` 由单一 Operational Context provider 管理，Graph 与 Status 复用同一个 Status query key；二者保持可编辑 Input，只在具体 Scope 工作区展示，返回全局 Locus 页面后隐藏，Knowledge 不再接收无关 context props。
 - 实际浏览器已验证 `360px`、`768px`、`1280px`、`1440px` 下四个页面无页面级横向溢出，手机表格只在局部容器滚动；中英文和 system/light/dark 切换会持久化到浏览器本地。
 - 前端依赖与命令统一使用 pnpm；Element Plus 组件和 Vue Composition API 分别通过 `unplugin-vue-components`、`unplugin-auto-import` 按需引入，避免手写通用组件 import 与全量 theme-chalk 入口。
 - Graph 的 Entity/Link 选择使用判别联合类型，Route overlay 保持独立状态；Inspector 按 Route、Selection、Resolve 三个稳定用户能力拆分，避免把查询、对象详情与操作状态堆进单一大组件。
 - Graph 节点拖动只由 Vue Flow 当前实例维护，实时连接路径由 `getSmoothStepPath` 基于当前 handle 坐标计算；刷新、路由重建或显式重新布局后恢复 ELK 位置。该交互不产生持久化或 API。
 - Knowledge 搜索 Scope、标题、路径与关联对象元数据；Markdown 由 `markdown-it` 渲染后经 DOMPurify 净化。索引侧栏复用 `FilterToolbar` 的 stacked 排列，避免在窄栏内压缩两个并排控件。
 - Status 搜索、状态筛选和每表独立分页基于 `/api/v0/status` 完整投影在客户端派生；Link 与 Route 各自在自己的数据面板内维护筛选与分页状态。Observation 与 Route Evidence 面板保持固定高度、固定行高和固定 pagination footer；默认每页 10 条，切换每页数量只改变内部数据与滚动，不触发外部布局位移。SQLite 保存 applicable Observation，不是可分页事件源，因而当前不引入服务端分页。
-- 桌面侧边栏使用 `184px`/`56px` 展开与图标态，折叠按钮固定在底部；Element Plus Menu 的 collapse API 负责折叠几何，避免自定义 padding 与组件内部布局竞争。状态不持久化，移动端不显示折叠按钮。
+- 桌面侧边栏使用 `216px`/`56px` 展开与图标态，展开宽度必须容纳英文 `Dependency Graph`；折叠按钮固定在底部，Element Plus Menu 的 collapse API 负责折叠几何。状态不持久化，移动端不显示折叠按钮。
 - 查询边界统一复用 `AsyncState`：初次加载使用 Element Plus `ElSkeleton`/`ElSkeletonItem` 按页面结构保留布局，错误使用 `ElResult` 并提供显式重试；后台刷新和业务 mutation 继续保留原内容，只在操作入口展示局部 loading，避免全屏蒙层阻断上下文。
-- Declared View 的 complete/partial 全局健康状态只在 Operational Toolbar 呈现一次；完整状态不在页面重复渲染 banner，partial 状态链接 Inspect Validate，由该页集中展示 blocked import 明细。
+- Declared View 的 complete/partial 状态在 Operational Toolbar 中命名为“声明状态”，只在存在当前 Scope 时显示并链接 Inspect Validate；全局 Locus 页面不得构造空 Scope 链接。完整状态不在页面重复渲染 banner，partial 由 Inspect 集中展示 blocked import 明细。
 - `Inspect` 是后端已有只读事实的集中入口：Context、Validate、Scope/Import/Binding/Source provenance 与统一声明检索归该页；Scope 和 Binding 仍不进入 operational Graph。
 - `/api/v0/context` 的完整诊断采用附加字段，保留既有简化 `imports`/`bindings` 形状；前端 DTO 必须覆盖服务端返回字段，避免 TypeScript 结构性赋值静默丢弃诊断。
 - `CopyValue` 统一技术值复制；Graph/Status 使用 canonical ID query 深链，Graph/Resolve 使用 document ID 或 documentation ref 跳转 Knowledge，不在客户端重做引用解析。
@@ -39,6 +44,12 @@
 - Inspect 各标签页使用各自 API query 的 `AsyncState`，单个投影加载或失败不得清空整个 Inspect；无 `tab` query 时必须回到 Context。Inspect 的单一主工作区填满 `PageHeader` 后的剩余高度，Tab 内容只在该工作区内滚动。Element Plus Tabs 没有公开的 fill-height API，因此仅在 `inspect-view__tabs` 边界内用 scoped `:deep` 将 header 固定为内容高度、content 设为剩余 flex 空间。`/api/v0` 集合字段即使为空也编码为 `[]`，避免前端对数组操作时因 `null` 中断整页渲染。
 - Graph Inspector 是唯一纵向滚动所有者，内部块使用内容高度网格；Collapse 展开只扩展滚动范围，不得通过 flex shrink 挤压 Probe Alert 或操作区。
 - 主工作区和数据面板保留单一外边界；Status 面板标题与筛选依靠间距分组，不再连续添加内部 divider，Inspect 校验统计不再嵌套第二层 bordered surface。表格、分栏和 pagination footer 等真实边界继续保留分隔线。
+- Dependency Canvas 与 ELK Graph 都把唯一节点宽高常量写入 Vue Flow node style，实际 card 使用 wrapper 的 `100%` 盒模型；布局输入、wrapper 和可见卡片不得各自猜测尺寸。
+- Declared View 与 Dependency Graph 共用 `GraphWorkspace` 的左侧 canvas/右侧 328px inspector 结构，并共用 ELK layered 参数、196×76 节点几何和 `ElkEdge`；Dependency 节点仅额外用右上箭头图标标识 openable，不使用随画布缩放且视觉不一致的全局 Tag。
+- Dependency Canvas 使用 Vue Flow 显式 source/target Handle；依赖边必须锚定 Handle，省略 Handle 会在双向连接位置生成错误回环。Catalog 与依赖详情在手机下改为单列，画布保留自身边界且不得制造页面级横向溢出。
+- Mutation 的短暂成功、部分成功和失败用 `ElMessage` 浮层，并显式引入 service 的 CSS，避免消息退化为文档末尾的无样式内容；要求确认依赖回退时用 `ElDialog` 展示 diff。`ElAlert` 只保留给属于当前 surface 的持续事实，不能作为短暂通知插入主工作区并改变布局。
+- 实际浏览器已验证完整五节点 Dependency 总图、搜索得到的祖先子图、local/URL remote 多层节点、Graph/Dependency wrapper 与 card 几何一致、Inspect 空集合安全渲染、空 User Status、声明 Provider/Observation 投影，以及 Refresh 消息出现前后 workspace top 不变。
+- 实际浏览器已对比 Alpha/Beta：Dependency Graph 分别为 5/3 个节点，内部 Graph 分别为 12/11 个 Entity；只有 Alpha 展示 URL remote closure，只有 Beta 展示 `Beta 构建沙箱`。
 
 ## Case Conventions
 

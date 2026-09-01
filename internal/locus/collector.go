@@ -11,9 +11,16 @@ import (
 	"gonum.org/v1/gonum/graph/path"
 )
 
+type SourceCacheKey struct {
+	OwnerScopeID string
+	ImportAlias  string
+}
+
 type CollectorOptions struct {
-	Home  string
-	Store *Store
+	Home               string
+	Store              *Store
+	SourceOverrides    map[SourceCacheKey]SourceCacheEntry
+	AuthorityOverrides map[string]ScopeAuthority
 }
 
 type collectedCandidate struct {
@@ -90,24 +97,26 @@ func (c *collector) collectImports(scope *ScopeRegistry, parentPath []string) {
 		imported := scope.Manifest.Imports[alias]
 		aliasPath := append(append([]string(nil), parentPath...), alias)
 		edge := &collectedEdge{
-			sourceScopeID: scope.Manifest.ScopeID, alias: alias, aliasPath: aliasPath, source: sanitizeSource(imported.Source),
+			sourceScopeID: scope.Manifest.ScopeID, targetScopeID: imported.ExpectedScopeID,
+			alias: alias, aliasPath: aliasPath, source: sanitizeSource(imported.Source),
 		}
 		candidate, provenance, reason, err := c.loadImport(scope, imported, aliasPath)
 		if err != nil {
-			edge.blocked = &BlockedImport{SourceScopeID: scope.Manifest.ScopeID, AliasPath: aliasPath, Source: edge.source, Reason: reason}
+			edge.blocked = &BlockedImport{SourceScopeID: scope.Manifest.ScopeID, TargetScopeID: edge.targetScopeID, AliasPath: aliasPath, Source: edge.source, Reason: reason}
 			c.edges = append(c.edges, edge)
 			continue
 		}
 		edge.targetScopeID = candidate.Manifest.ScopeID
 		edge.targetDigest = candidate.Digest
 		if imported.ExpectedScopeID != "" && imported.ExpectedScopeID != candidate.Manifest.ScopeID {
-			edge.blocked = &BlockedImport{SourceScopeID: scope.Manifest.ScopeID, AliasPath: aliasPath, Source: edge.source, Reason: "scope_id_mismatch"}
+			edge.blocked = &BlockedImport{SourceScopeID: scope.Manifest.ScopeID, TargetScopeID: candidate.Manifest.ScopeID, AliasPath: aliasPath, Source: edge.source, Reason: "scope_id_mismatch"}
 			c.edges = append(c.edges, edge)
 			continue
 		}
 		if cycle, ok := c.graph.addEdge(scope.Manifest.ScopeID, candidate.Manifest.ScopeID); !ok {
 			edge.blocked = &BlockedImport{
-				SourceScopeID: scope.Manifest.ScopeID, AliasPath: aliasPath, Source: edge.source, Reason: "cycle", CycleScopeIDs: cycle,
+				SourceScopeID: scope.Manifest.ScopeID, TargetScopeID: candidate.Manifest.ScopeID,
+				AliasPath: aliasPath, Source: edge.source, Reason: "cycle", CycleScopeIDs: cycle,
 			}
 			c.addCandidate(candidate, provenance)
 			c.edges = append(c.edges, edge)
@@ -139,10 +148,7 @@ func (c *collector) loadImport(owner *ScopeRegistry, imported Import, aliasPath 
 			ScopeID: registry.Manifest.ScopeID, ContentDigest: registry.Digest, Source: sanitizeSource(source), AliasPaths: [][]string{aliasPath}, ObjectPath: registry.Root,
 		}, "", nil
 	case "git", "url":
-		if c.options.Store == nil {
-			return nil, ScopeProvenance{}, "missing_active_cache", errors.New("remote source has no active cache store")
-		}
-		entry, err := c.options.Store.SourceCacheEntry(owner.Manifest.ScopeID, imported.Alias)
+		entry, err := c.sourceCacheEntry(owner.Manifest.ScopeID, imported.Alias)
 		if err != nil {
 			return nil, ScopeProvenance{}, "source_unavailable", err
 		}
@@ -179,31 +185,29 @@ func (c *collector) compose(root *ScopeRegistry) (*Registry, error) {
 			conflicted[scopeID] = len(byDigest) > 1
 			continue
 		}
-		if c.options.Store != nil {
-			authority, err := c.options.Store.ScopeAuthority(scopeID)
-			if err != nil {
-				return nil, err
-			}
-			if authority != nil {
-				conflicted[scopeID] = len(byDigest) > 1
-				if candidate := byDigest[authority.ActiveContentDigest]; candidate != nil {
-					chosen[scopeID] = candidate
-					continue
-				}
-				authorityRegistry, loadErr := LoadScopeRegistry(authority.ObjectPath, true)
-				if loadErr == nil && authorityRegistry.Manifest.ScopeID == scopeID && authorityRegistry.Digest == authority.ActiveContentDigest {
-					chosen[scopeID] = &collectedCandidate{
-						registry: authorityRegistry,
-						provenance: ScopeProvenance{
-							ScopeID: scopeID, ContentDigest: authorityRegistry.Digest, Source: authority.Provenance,
-							ObjectPath: authority.ObjectPath,
-						},
-					}
-					authorityOnly[scopeID] = true
-					conflicted[scopeID] = true
-				}
+		authority, err := c.scopeAuthority(scopeID)
+		if err != nil {
+			return nil, err
+		}
+		if authority != nil {
+			conflicted[scopeID] = len(byDigest) > 1
+			if candidate := byDigest[authority.ActiveContentDigest]; candidate != nil {
+				chosen[scopeID] = candidate
 				continue
 			}
+			authorityRegistry, loadErr := LoadScopeRegistry(authority.ObjectPath, true)
+			if loadErr == nil && authorityRegistry.Manifest.ScopeID == scopeID && authorityRegistry.Digest == authority.ActiveContentDigest {
+				chosen[scopeID] = &collectedCandidate{
+					registry: authorityRegistry,
+					provenance: ScopeProvenance{
+						ScopeID: scopeID, ContentDigest: authorityRegistry.Digest, Source: authority.Provenance,
+						ObjectPath: authority.ObjectPath,
+					},
+				}
+				authorityOnly[scopeID] = true
+				conflicted[scopeID] = true
+			}
+			continue
 		}
 		if len(byDigest) == 1 {
 			for _, candidate := range byDigest {
@@ -267,7 +271,8 @@ func (c *collector) compose(root *ScopeRegistry) (*Registry, error) {
 		target := chosen[edge.targetScopeID]
 		if target == nil || !reachable[edge.targetScopeID] || (conflicted[edge.targetScopeID] && target.registry.Digest != edge.targetDigest) {
 			registry.BlockedImports = append(registry.BlockedImports, BlockedImport{
-				SourceScopeID: edge.sourceScopeID, AliasPath: edge.aliasPath, Source: edge.source, Reason: "authority_conflict",
+				SourceScopeID: edge.sourceScopeID, TargetScopeID: edge.targetScopeID,
+				AliasPath: edge.aliasPath, Source: edge.source, Reason: "authority_conflict",
 			})
 			continue
 		}
@@ -276,7 +281,8 @@ func (c *collector) compose(root *ScopeRegistry) (*Registry, error) {
 		if previous := registry.Aliases[aliasKey]; previous != "" && previous != edge.targetScopeID {
 			delete(registry.Aliases, aliasKey)
 			registry.BlockedImports = append(registry.BlockedImports, BlockedImport{
-				SourceScopeID: edge.sourceScopeID, AliasPath: edge.aliasPath, Source: edge.source, Reason: "alias_conflict",
+				SourceScopeID: edge.sourceScopeID, TargetScopeID: edge.targetScopeID,
+				AliasPath: edge.aliasPath, Source: edge.source, Reason: "alias_conflict",
 			})
 			continue
 		}
@@ -306,6 +312,28 @@ func (c *collector) compose(root *ScopeRegistry) (*Registry, error) {
 		return nil, err
 	}
 	return registry, nil
+}
+
+func (c *collector) sourceCacheEntry(ownerScopeID, alias string) (*SourceCacheEntry, error) {
+	if entry, ok := c.options.SourceOverrides[SourceCacheKey{OwnerScopeID: ownerScopeID, ImportAlias: alias}]; ok {
+		copy := entry
+		return &copy, nil
+	}
+	if c.options.Store == nil {
+		return nil, nil
+	}
+	return c.options.Store.SourceCacheEntry(ownerScopeID, alias)
+}
+
+func (c *collector) scopeAuthority(scopeID string) (*ScopeAuthority, error) {
+	if authority, ok := c.options.AuthorityOverrides[scopeID]; ok {
+		copy := authority
+		return &copy, nil
+	}
+	if c.options.Store == nil {
+		return nil, nil
+	}
+	return c.options.Store.ScopeAuthority(scopeID)
 }
 
 func appendUniquePath(paths [][]string, additions ...[]string) [][]string {

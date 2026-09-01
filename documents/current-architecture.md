@@ -69,9 +69,9 @@ ${LOCUS_HOME}/
 ### 2.3 Remote Source 与显式 refresh
 
 - 普通 `graph/list/show/context/resolve/status/probe` 只读取 directory Source 与已激活 immutable remote object，不执行 Git、HTTP 或其他隐式 fetch。
-- `locus refresh [alias-path]` 是唯一 remote 获取入口。Git revision 解析为 commit；URL 仅接受受大小、entry 数、路径穿越和 symlink 限制的 ZIP Registry。
-- Candidate 通过严格 Registry、expected/actual `scope_id`、declaration 和 docs containment 校验后，移动到 `<home>/cache/objects/<digest>`。
-- edge cache 与 Scope authority 在单个 SQLite transaction 中激活。失败 candidate 不修改 active pointer；已有 cache 时结果报告 retained revision/digest，首次失败保持 blocked。
+- `locus refresh [alias-path]` 与 Web `POST /api/v0/locus/refresh` 是 remote 获取入口。Git revision 解析为 commit；URL 仅接受受大小、entry 数、路径穿越和 symlink 限制的 ZIP Registry。
+- Candidate 通过严格 Registry、expected/actual `scope_id`、declaration 和 docs containment 校验后进入 immutable object store，但尚不改变 active pointer。Collector 通过 overlay cache 构建 candidate Dependency Snapshot，并与 active snapshot 比较节点、edge、digest、blocked diagnostics 和 completeness。
+- 无回退时，所有 edge cache pointer 与无冲突 Scope authority 在单个 SQLite transaction 中激活。新增 blocked/cycle/authority conflict 或 completeness 回退时返回 `confirmation_required`；active 保持不变，确认请求必须携带已审阅的 candidate snapshot digest。
 
 ### 2.4 Workstation-local mechanism bindings
 
@@ -166,7 +166,7 @@ stateDiagram-v2
 | `user init` | 创建用户根 Registry |
 | `init` | 创建 Scope Registry，可选显式用户 import 与项目登记 |
 | `project register\|unregister\|list` | 管理本机项目反向登记 |
-| `refresh [alias-path]` | 显式刷新 remote imports 并原子激活通过校验的 cache |
+| `refresh [alias-path]` | 生成 active/candidate Dependency Snapshot 与 diff；无回退时原子激活，回退时要求 `--allow-regression` |
 | `validate` | 加载并校验 Registry，返回活跃 Scope、三类对象数量与 partial diagnostics |
 | `context` | 返回 root discovery/registration/cache、Scope、imports、bindings、RuntimeContext 与 Observation Store 路径 |
 | `graph` | 返回 Scope、Import、Binding、Entity、Link、Route 与 provenance 的完整声明投影 |
@@ -175,9 +175,11 @@ stateDiagram-v2
 | `resolve <target> --capability <name>` | 按当前规则筛选显式 Route 并附加既有证据 |
 | `probe <link-or-route-id>` | 执行 safe probe 并追加 Observation |
 | `status [link-or-route-id]` | 查看最新 Link/Route evidence 或按状态汇总 |
-| `web` | 装载 Registry 与本机 Store，启动 loopback HTTP server；Vue Graph/Status/Knowledge/Inspect 呈现声明图、完整诊断、证据、文档、Context、Validate、声明检索、Resolve 与显式 safe Probe，并提供跨视图深链、技术值复制、默认中文/英文切换、system/light/dark 主题及 ELK 异步分层图布局 |
+| `web` | 装载本机 Store，提供稳定 Locus 页面及 Scope 工作区；Catalog 展示用户根和项目登记，Dependency Graph 默认展示所选 Root 的完整多层本地/remote 快照并由筛选器派生子图，Graph/Status/Knowledge/Inspect 按可打开 Scope 深链，并保留 Resolve、显式 safe Probe、中英文、主题和 ELK operational graph |
 
 `context`、`resolve`、`probe`、`status` 需要 `--from`；`resolve` 还需要 `--capability`。四个命令都接受 `--vantage` 和 `--mechanism-bindings`，并复用同一个 Runtime Context builder。`web` 的同名 flags 是初始页面上下文；`web` 只允许 loopback `--address`。各命令可用 `--registry` 覆盖发现结果。
+
+Web Status 对没有 current Entity 且没有 operational 声明的 Scope 返回空投影，不阻塞页面；每条 Link evidence 独立返回声明 Provider，Observation 缺失仍只表现为 `unknown`/“从未”。Dependency refresh 普通结果使用不参与布局的浮层消息，需要确认的回退 candidate 使用模态 diff。
 
 `validate`、`list`、`show` 只装载声明，不解析 runtime、PATH、vantage、local mechanism bindings 或 Observation state；`context`、`resolve`、`probe`、`status` 按统一现场语义装配运行时。
 
@@ -185,10 +187,10 @@ stateDiagram-v2
 
 `scripts/test-e2e.ps1` 运行全部 `*EndToEnd` 测试，并分别保留：
 
-- `temp/e2e-run/native/`：原有 workspace、Provider helper、mechanism binding、Observation、Web API/UI 联调产物；
+- `temp/e2e-run/native/`：workspace、Provider helper、mechanism binding、Observation、可递归展示的本地/URL remote Dependency Snapshot，以及 Web API/UI 联调产物；
 - `temp/e2e-run/scope/`：用户/项目/多层本地 Scope 图、remote cache、Git/URL helper、SQLite authority 与 refresh 产物。
 
-`TestWorkspaceEndToEnd` 覆盖两个 Project 导入同一个 customer Scope、严格 CLI、向上发现、Resolve 不触发 Probe、FRP/SSH/Salt success/failure/recovery、Observation applicability、mechanism binding 隔离、Knowledge 和真实 Web 子进程。
+`TestWorkspaceEndToEnd` 使用两套独立 Project Registry fixture。Alpha 包含 7 个 Binding、12 个 Entity、9 条 Link、7 条 Route，以及 customer 的二级 platform 与两级 URL remote；Beta 只声明 2 个 Binding、11 个 Entity、3 条 Link、2 条 Route，保留本地依赖并增加专属 `service.beta-sandbox`。此外覆盖严格 CLI、向上发现、Resolve 不触发 Probe、FRP/SSH/Salt success/failure/recovery、Observation applicability、mechanism binding 隔离、Knowledge 和真实 Web 子进程。Web 同时断言 Alpha/Beta 的 Dependency Graph 分别为五节点四边和三节点两边。
 
 `TestScopeGraphEndToEnd` 覆盖用户根与项目根选择、项目反向登记不 merge、显式用户 import、长 alias path、同 digest 多路径去重、回边 partial、partial Resolve、已加载 Link Probe，以及 remote 首次无 cache、显式 Git/URL refresh、普通命令零 fetch、更新前保留旧 revision、刷新切换、失败回退和首次失败 blocked。
 

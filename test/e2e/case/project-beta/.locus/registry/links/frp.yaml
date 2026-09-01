@@ -1,0 +1,7 @@
+api_version: locus/v1
+type: link
+id: link.prod-frp
+from: {{WORKSTATION}}
+to: customer::frps.primary
+provider: frp-stcp
+provides: [tcp-forward.ssh]

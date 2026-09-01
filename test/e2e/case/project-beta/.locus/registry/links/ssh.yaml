@@ -1,0 +1,11 @@
+api_version: locus/v1
+type: link
+id: link.prod-ssh
+from: {{WORKSTATION}}
+to: customer::host.prod-01
+provider: ssh
+requires: [tcp-forward.ssh]
+provides: [shell, exec]
+documentation:
+  - ref: ../docs/production-access.md#验证
+    title: Beta 生产访问

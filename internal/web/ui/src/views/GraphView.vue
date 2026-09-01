@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useI18n } from 'vue-i18n'
 import { getGraph, probe, resolveRoute } from '../api'
 import AsyncState from '../components/AsyncState.vue'
+import GraphWorkspace from '../components/GraphWorkspace.vue'
 import PageHeader from '../components/PageHeader.vue'
 import GraphCanvas from '../features/graph/GraphCanvas.vue'
 import GraphInspector from '../features/graph/GraphInspector.vue'
@@ -11,11 +12,16 @@ import type { GraphLayout } from '../features/graph/graph-layout'
 import type { GraphSelection } from '../features/graph/graph-types'
 import { useOperationalContext } from '../operational-context'
 import { useStatusQuery } from '../queries'
+import { useScopeID } from '../scope-context'
 
 const { t } = useI18n()
 const route = useRoute()
 const context = useOperationalContext()
-const graphQuery = useQuery({ queryKey: ['graph'], queryFn: getGraph })
+const scopeID = useScopeID()
+const graphQuery = useQuery({
+  queryKey: computed(() => ['graph', scopeID.value]),
+  queryFn: () => getGraph(scopeID.value),
+})
 const statusQuery = useStatusQuery()
 const queryClient = useQueryClient()
 const selectedRoute = ref('')
@@ -91,12 +97,12 @@ const linkStatus = computed(() => new Map(statusQuery.data.value?.links.map(item
 const empty = computed(() => Boolean(graphQuery.data.value && !graphQuery.data.value.entities.length))
 const operationalReady = computed(() => Boolean(context.from && context.vantage))
 const resolveMutation = useMutation({
-  mutationFn: () => resolveRoute(target.value, capability.value, context.from, context.vantage),
+  mutationFn: () => resolveRoute(scopeID.value, target.value, capability.value, context.from, context.vantage),
 })
 const probeMutation = useMutation({
-  mutationFn: (subject: string) => probe(subject, context.from, context.vantage),
+  mutationFn: (subject: string) => probe(scopeID.value, subject, context.from, context.vantage),
   onSuccess: async () => {
-    await queryClient.invalidateQueries({ queryKey: ['status'] })
+    await queryClient.invalidateQueries({ queryKey: ['status', scopeID.value] })
   },
 })
 </script>
@@ -137,8 +143,8 @@ const probeMutation = useMutation({
         skeleton="graph"
         @retry="calculateLayout"
       >
-        <ElContainer v-if="layout && graphQuery.data.value" class="graph-view__workspace">
-          <ElMain class="graph-view__canvas-region">
+        <GraphWorkspace v-if="layout && graphQuery.data.value">
+          <template #canvas>
             <GraphCanvas
               :key="layout.fingerprint + layoutRevision"
               :layout="layout"
@@ -147,8 +153,8 @@ const probeMutation = useMutation({
               :selection="selection"
               @select="selection = $event"
             />
-          </ElMain>
-          <ElAside class="graph-view__inspector-region" width="328px">
+          </template>
+          <template #inspector>
             <GraphInspector
               v-model:selected-route="selectedRoute"
               v-model:selection="selection"
@@ -168,8 +174,8 @@ const probeMutation = useMutation({
               @resolve="resolveMutation.mutate()"
               @relayout="calculateLayout"
             />
-          </ElAside>
-        </ElContainer>
+          </template>
+        </GraphWorkspace>
       </AsyncState>
     </AsyncState>
   </section>
@@ -197,54 +203,15 @@ const probeMutation = useMutation({
   font-size: var(--locus-font-size-base);
 }
 
-.graph-view__workspace {
-  min-width: 0;
-  min-height: 0;
-  flex: 1;
-  overflow: hidden;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--locus-radius-md);
-  background: var(--surface-panel);
-}
-
-.graph-view__canvas-region {
-  min-width: 0;
-  padding: 0;
-  overflow: hidden;
-}
-
-.graph-view__inspector-region {
-  min-width: 0;
-  overflow: hidden;
-}
-
 @media (max-width: 1100px) {
   .graph-view {
     height: auto;
-  }
-
-  .graph-view__workspace {
-    min-height: 0;
-    display: block;
-  }
-
-  .graph-view__canvas-region {
-    height: 540px;
-  }
-
-  .graph-view__inspector-region {
-    width: 100% !important;
-    border-top: 1px solid var(--border-subtle);
   }
 }
 
 @media (max-width: 600px) {
   .graph-view__counts {
     justify-content: flex-start;
-  }
-
-  .graph-view__canvas-region {
-    height: 440px;
   }
 }
 </style>

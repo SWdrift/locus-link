@@ -24,10 +24,12 @@ const (
 var gitCommitPattern = regexp.MustCompile(`^[0-9a-f]{40,64}$`)
 
 type RefreshOptions struct {
-	Home          string
-	Store         *Store
-	GitExecutable string
-	HTTPClient    *http.Client
+	Home                    string
+	Store                   *Store
+	GitExecutable           string
+	HTTPClient              *http.Client
+	AllowRegression         bool
+	ExpectedCandidateDigest string
 }
 
 type RefreshedSource struct {
@@ -45,22 +47,30 @@ type RefreshError struct {
 }
 
 type RefreshResult struct {
-	Status         string            `json:"status"`
-	Activated      []RefreshedSource `json:"activated"`
-	Retained       []RefreshedSource `json:"retained"`
-	RefreshErrors  []RefreshError    `json:"refresh_errors"`
-	Completeness   Completeness      `json:"completeness"`
-	BlockedImports []BlockedImport   `json:"blocked_imports"`
+	Status            string              `json:"status"`
+	Activated         []RefreshedSource   `json:"activated"`
+	Retained          []RefreshedSource   `json:"retained"`
+	RefreshErrors     []RefreshError      `json:"refresh_errors"`
+	Completeness      Completeness        `json:"completeness"`
+	BlockedImports    []BlockedImport     `json:"blocked_imports"`
+	ActiveSnapshot    *DependencySnapshot `json:"active_snapshot,omitempty"`
+	CandidateSnapshot *DependencySnapshot `json:"candidate_snapshot,omitempty"`
+	Diff              *DependencyDiff     `json:"diff,omitempty"`
 }
 
 type refreshWalker struct {
-	ctx     context.Context
-	options RefreshOptions
-	layout  HomeLayout
-	target  []string
-	result  RefreshResult
-	visited map[string]bool
-	matched bool
+	ctx                context.Context
+	options            RefreshOptions
+	layout             HomeLayout
+	target             []string
+	result             RefreshResult
+	visited            map[string]bool
+	matched            bool
+	activations        []sourceActivation
+	pending            []RefreshedSource
+	sourceOverrides    map[SourceCacheKey]SourceCacheEntry
+	authorityOverrides map[string]ScopeAuthority
+	authorityConflicts map[string]bool
 }
 
 func RefreshRegistry(ctx context.Context, root, aliasPath string, options RefreshOptions) (RefreshResult, error) {
@@ -97,37 +107,74 @@ func RefreshRegistry(ctx context.Context, root, aliasPath string, options Refres
 	if err != nil {
 		return RefreshResult{}, err
 	}
+	activeView, err := CollectRegistry(root, CollectorOptions{Home: options.Home, Store: options.Store})
+	if err != nil {
+		return RefreshResult{}, err
+	}
+	activeSnapshot := SnapshotDependency(activeView)
 	walker := &refreshWalker{
 		ctx: ctx, options: options, layout: layout, target: target, visited: map[string]bool{},
-		result: RefreshResult{Activated: []RefreshedSource{}, Retained: []RefreshedSource{}, RefreshErrors: []RefreshError{}},
+		sourceOverrides: map[SourceCacheKey]SourceCacheEntry{}, authorityOverrides: map[string]ScopeAuthority{},
+		authorityConflicts: map[string]bool{},
+		result: RefreshResult{
+			Activated: []RefreshedSource{}, Retained: []RefreshedSource{}, RefreshErrors: []RefreshError{},
+			ActiveSnapshot: &activeSnapshot,
+		},
 	}
 	walker.walk(rootRegistry, nil)
 	if len(target) != 0 && !walker.matched {
 		return RefreshResult{}, fmt.Errorf("refresh target %q is not a remote import", aliasPath)
 	}
-	view, collectErr := CollectRegistry(root, CollectorOptions{Home: options.Home, Store: options.Store})
-	if collectErr != nil {
-		return RefreshResult{}, collectErr
+	candidateView, err := CollectRegistry(root, CollectorOptions{
+		Home: options.Home, Store: options.Store,
+		SourceOverrides: walker.sourceOverrides, AuthorityOverrides: walker.authorityOverrides,
+	})
+	if err != nil {
+		return RefreshResult{}, err
 	}
-	walker.result.Completeness = view.Completeness
-	walker.result.BlockedImports = append([]BlockedImport(nil), view.BlockedImports...)
-	if len(walker.result.RefreshErrors) == 0 {
+	candidateSnapshot := SnapshotDependency(candidateView)
+	diff := DiffDependencies(activeSnapshot, candidateSnapshot)
+	walker.result.CandidateSnapshot = &candidateSnapshot
+	walker.result.Diff = &diff
+	walker.result.Completeness = candidateView.Completeness
+	walker.result.BlockedImports = append([]BlockedImport{}, candidateView.BlockedImports...)
+	if options.ExpectedCandidateDigest != "" && options.ExpectedCandidateDigest != candidateSnapshot.SnapshotDigest {
+		return RefreshResult{}, errors.New("refresh candidate changed; review the new dependency diff")
+	}
+	if diff.RequiresConfirmation && options.AllowRegression && options.ExpectedCandidateDigest == "" {
+		return RefreshResult{}, errors.New("confirmed refresh requires the reviewed candidate snapshot digest")
+	}
+	if diff.RequiresConfirmation && !options.AllowRegression {
+		walker.result.Status = "confirmation_required"
+		walker.sortResult()
+		return walker.result, nil
+	}
+	if err := options.Store.activateSources(ctx, walker.activations); err != nil {
+		return RefreshResult{}, err
+	}
+	walker.result.Activated = append(walker.result.Activated, walker.pending...)
+	switch {
+	case len(walker.result.RefreshErrors) == 0:
 		walker.result.Status = "success"
-	} else if len(walker.result.Activated) != 0 || len(walker.result.Retained) != 0 {
+	case len(walker.result.Activated) != 0 || len(walker.result.Retained) != 0:
 		walker.result.Status = "partial"
-	} else {
+	default:
 		walker.result.Status = "failure"
 	}
-	sort.Slice(walker.result.Activated, func(i, j int) bool {
-		return strings.Join(walker.result.Activated[i].AliasPath, "::") < strings.Join(walker.result.Activated[j].AliasPath, "::")
-	})
-	sort.Slice(walker.result.Retained, func(i, j int) bool {
-		return strings.Join(walker.result.Retained[i].AliasPath, "::") < strings.Join(walker.result.Retained[j].AliasPath, "::")
-	})
-	sort.Slice(walker.result.RefreshErrors, func(i, j int) bool {
-		return strings.Join(walker.result.RefreshErrors[i].AliasPath, "::") < strings.Join(walker.result.RefreshErrors[j].AliasPath, "::")
-	})
+	walker.sortResult()
 	return walker.result, nil
+}
+
+func (w *refreshWalker) sortResult() {
+	sort.Slice(w.result.Activated, func(i, j int) bool {
+		return strings.Join(w.result.Activated[i].AliasPath, "::") < strings.Join(w.result.Activated[j].AliasPath, "::")
+	})
+	sort.Slice(w.result.Retained, func(i, j int) bool {
+		return strings.Join(w.result.Retained[i].AliasPath, "::") < strings.Join(w.result.Retained[j].AliasPath, "::")
+	})
+	sort.Slice(w.result.RefreshErrors, func(i, j int) bool {
+		return strings.Join(w.result.RefreshErrors[i].AliasPath, "::") < strings.Join(w.result.RefreshErrors[j].AliasPath, "::")
+	})
 }
 
 func (w *refreshWalker) walk(scope *ScopeRegistry, prefix []string) {
@@ -145,17 +192,21 @@ func (w *refreshWalker) walk(scope *ScopeRegistry, prefix []string) {
 		shouldRefresh := imported.Source.Kind != "directory" && (len(w.target) == 0 || equalPath(aliasPath, w.target))
 		if shouldRefresh {
 			w.matched = true
-			refreshed, retained, reason := w.refreshEdge(scope, imported, aliasPath)
+			activation, refreshed, retained, reason := w.refreshEdge(scope, imported, aliasPath)
 			if reason != "" {
 				w.result.RefreshErrors = append(w.result.RefreshErrors, RefreshError{OwnerScopeID: scope.Manifest.ScopeID, AliasPath: aliasPath, Reason: reason})
 				_ = w.options.Store.recordRefreshFailure(w.ctx, scope.Manifest.ScopeID, imported, reason)
 				if retained != nil {
 					w.result.Retained = append(w.result.Retained, *retained)
 				}
-			} else if refreshed != nil {
-				w.result.Activated = append(w.result.Activated, *refreshed)
-			} else if retained != nil {
-				w.result.Retained = append(w.result.Retained, *retained)
+			} else if activation != nil {
+				w.stage(*activation)
+				if refreshed != nil {
+					w.pending = append(w.pending, *refreshed)
+				}
+				if retained != nil {
+					w.result.Retained = append(w.result.Retained, *retained)
+				}
 			}
 		}
 		child, _ := w.loadCurrentChild(scope, imported)
@@ -165,11 +216,35 @@ func (w *refreshWalker) walk(scope *ScopeRegistry, prefix []string) {
 	}
 }
 
-func (w *refreshWalker) refreshEdge(owner *ScopeRegistry, imported Import, aliasPath []string) (*RefreshedSource, *RefreshedSource, string) {
+func (w *refreshWalker) stage(activation sourceActivation) {
+	entry := activation.Entry
+	activation.UpdateAuthority = true
+	if authority, ok := w.authorityOverrides[entry.ActualScopeID]; ok && authority.ActiveContentDigest != entry.ActiveContentDigest {
+		w.authorityConflicts[entry.ActualScopeID] = true
+		delete(w.authorityOverrides, entry.ActualScopeID)
+		for index := range w.activations {
+			if w.activations[index].Entry.ActualScopeID == entry.ActualScopeID {
+				w.activations[index].UpdateAuthority = false
+			}
+		}
+	}
+	if w.authorityConflicts[entry.ActualScopeID] {
+		activation.UpdateAuthority = false
+	} else {
+		w.authorityOverrides[entry.ActualScopeID] = ScopeAuthority{
+			ScopeID: entry.ActualScopeID, ActiveContentDigest: entry.ActiveContentDigest,
+			ObjectPath: entry.ObjectPath, Provenance: sanitizeSource(activation.Source),
+		}
+	}
+	w.activations = append(w.activations, activation)
+	w.sourceOverrides[SourceCacheKey{OwnerScopeID: entry.OwnerScopeID, ImportAlias: entry.ImportAlias}] = entry
+}
+
+func (w *refreshWalker) refreshEdge(owner *ScopeRegistry, imported Import, aliasPath []string) (*sourceActivation, *RefreshedSource, *RefreshedSource, string) {
 	previous, _ := w.options.Store.SourceCacheEntry(owner.Manifest.ScopeID, imported.Alias)
 	candidate, err := os.MkdirTemp(w.layout.Candidates, "refresh-")
 	if err != nil {
-		return nil, retainedSource(previous, aliasPath), "source_unavailable"
+		return nil, nil, retainedSource(previous, aliasPath), "source_unavailable"
 	}
 	defer os.RemoveAll(candidate)
 	registryRoot := ""
@@ -182,28 +257,27 @@ func (w *refreshWalker) refreshEdge(owner *ScopeRegistry, imported Import, alias
 		var notModified bool
 		registryRoot, etag, lastModified, notModified, err = w.fetchURL(imported.Source, candidate, previous)
 		if notModified && previous != nil {
-			if err := w.options.Store.activateSource(w.ctx, *previous, imported.Source); err != nil {
-				return nil, retainedSource(previous, aliasPath), "source_unavailable"
-			}
-			return nil, retainedSource(previous, aliasPath), ""
+			entry := *previous
+			entry.ConfiguredSourceDigest = sourceDigest(imported.Source)
+			return &sourceActivation{Entry: entry, Source: imported.Source}, nil, retainedSource(previous, aliasPath), ""
 		}
 	default:
-		return nil, retainedSource(previous, aliasPath), "source_unavailable"
+		return nil, nil, retainedSource(previous, aliasPath), "source_unavailable"
 	}
 	if err != nil {
-		return nil, retainedSource(previous, aliasPath), "source_unavailable"
+		return nil, nil, retainedSource(previous, aliasPath), "source_unavailable"
 	}
 	registry, err := LoadScopeRegistry(registryRoot, true)
 	if err != nil {
-		return nil, retainedSource(previous, aliasPath), "invalid_registry"
+		return nil, nil, retainedSource(previous, aliasPath), "invalid_registry"
 	}
 	if imported.ExpectedScopeID != "" && imported.ExpectedScopeID != registry.Manifest.ScopeID {
-		return nil, retainedSource(previous, aliasPath), "scope_id_mismatch"
+		return nil, nil, retainedSource(previous, aliasPath), "scope_id_mismatch"
 	}
 	objectPath := filepath.Join(w.layout.Objects, strings.TrimPrefix(registry.Digest, "sha256:"))
 	if _, statErr := os.Stat(objectPath); os.IsNotExist(statErr) {
 		if err := os.Rename(registryRoot, objectPath); err != nil {
-			return nil, retainedSource(previous, aliasPath), "source_unavailable"
+			return nil, nil, retainedSource(previous, aliasPath), "source_unavailable"
 		}
 	}
 	entry := SourceCacheEntry{
@@ -212,13 +286,11 @@ func (w *refreshWalker) refreshEdge(owner *ScopeRegistry, imported Import, alias
 		ActiveContentDigest: registry.Digest, ResolvedRevision: resolvedRevision, ObjectPath: objectPath,
 		ETag: etag, LastModified: lastModified,
 	}
-	if err := w.options.Store.activateSource(w.ctx, entry, imported.Source); err != nil {
-		return nil, retainedSource(previous, aliasPath), "source_unavailable"
-	}
-	return &RefreshedSource{
+	refreshed := &RefreshedSource{
 		OwnerScopeID: owner.Manifest.ScopeID, AliasPath: aliasPath, ScopeID: registry.Manifest.ScopeID,
 		ContentDigest: registry.Digest, ResolvedRevision: resolvedRevision,
-	}, nil, ""
+	}
+	return &sourceActivation{Entry: entry, Source: imported.Source}, refreshed, nil, ""
 }
 
 func (w *refreshWalker) loadCurrentChild(owner *ScopeRegistry, imported Import) (*ScopeRegistry, error) {
@@ -228,6 +300,10 @@ func (w *refreshWalker) loadCurrentChild(owner *ScopeRegistry, imported Import) 
 			return nil, err
 		}
 		return LoadScopeRegistry(path, false)
+	}
+	key := SourceCacheKey{OwnerScopeID: owner.Manifest.ScopeID, ImportAlias: imported.Alias}
+	if entry, ok := w.sourceOverrides[key]; ok {
+		return LoadScopeRegistry(entry.ObjectPath, true)
 	}
 	entry, err := w.options.Store.SourceCacheEntry(owner.Manifest.ScopeID, imported.Alias)
 	if err != nil || entry == nil || entry.ObjectPath == "" {

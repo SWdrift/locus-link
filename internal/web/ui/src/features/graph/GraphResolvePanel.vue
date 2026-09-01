@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 import CopyValue from '../../components/CopyValue.vue'
 import EvidenceDetails from '../../components/EvidenceDetails.vue'
 import type { ResolveResult, ResolvedRoute } from '../../domain/locus'
+import { scopePath, useScopeID } from '../../scope-context'
 
 const props = defineProps<{
   operationalReady: boolean
@@ -14,6 +15,7 @@ const emit = defineEmits<{ resolve: [] }>()
 const target = defineModel<string>('target', { required: true })
 const capability = defineModel<string>('capability', { required: true })
 const { t } = useI18n()
+const scopeID = useScopeID()
 const routes = computed<ResolvedRoute[]>(() => {
   if (!props.resolveResult) return []
   return props.resolveResult.route ? [props.resolveResult.route] : props.resolveResult.candidates
@@ -78,7 +80,7 @@ const command = (route: ResolvedRoute['steps'][number]) =>
               <RouterLink
                 v-for="document in route.documentation"
                 :key="document.ref"
-                :to="{ path: '/knowledge', query: { search: document.ref } }"
+                :to="{ path: scopePath(scopeID, 'knowledge'), query: { search: document.ref } }"
               >
                 <ElButton link type="primary">{{ document.title || document.ref }}</ElButton>
               </RouterLink>
@@ -103,7 +105,7 @@ const command = (route: ResolvedRoute['steps'][number]) =>
                   <RouterLink
                     v-for="document in step.documentation"
                     :key="document.ref"
-                    :to="{ path: '/knowledge', query: { search: document.ref } }"
+                    :to="{ path: scopePath(scopeID, 'knowledge'), query: { search: document.ref } }"
                   >
                     <ElButton link type="primary">{{ document.title || document.ref }}</ElButton>
                   </RouterLink>

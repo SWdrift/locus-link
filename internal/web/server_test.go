@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,8 +15,31 @@ import (
 
 func TestContextAndAPIOnlyRoot(t *testing.T) {
 	registry := writeTestRegistry(t)
-	t.Setenv("LOCUS_STATE_PATH", filepath.Join(registry, "state.db"))
-	t.Setenv("LOCUS_HOME", filepath.Join(registry, "home"))
+	statePath := filepath.Join(registry, "state.db")
+	home := filepath.Join(registry, "home")
+	t.Setenv("LOCUS_STATE_PATH", statePath)
+	userRegistry := filepath.Join(home, "registry")
+	if err := os.MkdirAll(userRegistry, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(userRegistry, "scope.yaml"),
+		[]byte("api_version: locus/v1\nscope_id: user.web\n"),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LOCUS_HOME", home)
+	store, err := locus.OpenStore(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.RegisterProject(context.Background(), registry, home); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
 	server, err := New(Config{Registry: registry, From: "workstation", Vantage: "office-lan"}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -38,6 +62,36 @@ func TestContextAndAPIOnlyRoot(t *testing.T) {
 	}
 	if value.ImportEdges == nil || value.BlockedImports == nil {
 		t.Fatalf("context collection fields must encode as arrays: %#v", value)
+	}
+	if value.Runtime.AvailableTools == nil {
+		t.Fatalf("available tools must encode as an array: %#v", value.Runtime)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "http://localhost/api/v0/locus/scopes", nil)
+	response = httptest.NewRecorder()
+	server.http.Handler.ServeHTTP(response, request)
+	var catalog struct {
+		Scopes []locus.LocusScopeEntry `json:"scopes"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&catalog); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusOK || len(catalog.Scopes) != 2 || catalog.Scopes[0].ScopeID != "user.web" ||
+		!catalog.Scopes[0].Openable || catalog.Scopes[1].ScopeID != "project.web" ||
+		!catalog.Scopes[1].Openable || !catalog.Scopes[1].Active {
+		t.Fatalf("unexpected Locus catalog %d: %#v", response.Code, catalog)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "http://localhost/api/v0/locus/dependencies?root=project.web", nil)
+	response = httptest.NewRecorder()
+	server.http.Handler.ServeHTTP(response, request)
+	var dependencies locus.DependencySnapshot
+	if err := json.NewDecoder(response.Body).Decode(&dependencies); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusOK || dependencies.RootScopeID != "project.web" || len(dependencies.Nodes) != 1 ||
+		dependencies.Nodes[0].Kind != "project" || !dependencies.Nodes[0].Openable || dependencies.SnapshotDigest == "" {
+		t.Fatalf("unexpected dependency snapshot %d: %#v", response.Code, dependencies)
 	}
 
 	request = httptest.NewRequest(http.MethodGet, "http://localhost/api/v0/validate", nil)
@@ -72,8 +126,19 @@ func TestContextAndAPIOnlyRoot(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&status); err != nil {
 		t.Fatal(err)
 	}
-	if response.Code != http.StatusOK || status.Summary["unknown"] != 1 || len(status.Routes) != 1 || status.Routes[0].Evidence.Status != "unknown" {
+	if response.Code != http.StatusOK || status.Summary["unknown"] != 1 || len(status.Links) != 1 ||
+		status.Links[0].Provider != "salt" || len(status.Routes) != 1 || status.Routes[0].Evidence.Status != "unknown" {
 		t.Fatalf("unexpected status response %d: %#v", response.Code, status)
+	}
+	request = httptest.NewRequest(http.MethodGet, "http://localhost/api/v0/status?scope=user.web&vantage=office-lan", nil)
+	response = httptest.NewRecorder()
+	server.http.Handler.ServeHTTP(response, request)
+	var userStatus locus.StatusView
+	if err := json.NewDecoder(response.Body).Decode(&userStatus); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusOK || len(userStatus.Links) != 0 || len(userStatus.Routes) != 0 {
+		t.Fatalf("empty user Scope status %d: %#v", response.Code, userStatus)
 	}
 
 	request = httptest.NewRequest(http.MethodGet, "http://localhost/api/v0/resolve?target=target&capability=salt.ping&from=workstation&vantage=office-lan", nil)

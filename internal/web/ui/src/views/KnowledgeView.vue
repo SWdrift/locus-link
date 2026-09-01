@@ -7,10 +7,15 @@ import { getDocument, getKnowledge } from '../api'
 import AsyncState from '../components/AsyncState.vue'
 import FilterToolbar from '../components/FilterToolbar.vue'
 import PageHeader from '../components/PageHeader.vue'
+import { useScopeID } from '../scope-context'
 
 const { t } = useI18n()
 const route = useRoute()
-const knowledgeQuery = useQuery({ queryKey: ['knowledge'], queryFn: getKnowledge })
+const scopeID = useScopeID()
+const knowledgeQuery = useQuery({
+  queryKey: computed(() => ['knowledge', scopeID.value]),
+  queryFn: () => getKnowledge(scopeID.value),
+})
 const selectedDocument = ref('')
 const searchText = ref(typeof route.query.search === 'string' ? route.query.search : '')
 const scopeFilter = ref('all')
@@ -54,9 +59,9 @@ watch(
 )
 
 const documentQuery = useQuery({
-  queryKey: computed(() => ['document', selectedDocument.value]),
-  queryFn: () => getDocument(selectedDocument.value),
-  enabled: computed(() => Boolean(selectedDocument.value)),
+  queryKey: computed(() => ['document', scopeID.value, selectedDocument.value]),
+  queryFn: () => getDocument(scopeID.value, selectedDocument.value),
+  enabled: computed(() => Boolean(scopeID.value && selectedDocument.value)),
 })
 const rendered = computed(() => {
   const document = documentQuery.data.value

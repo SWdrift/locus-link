@@ -262,6 +262,60 @@ func TestURLRefreshRejectsInvalidCandidatesWithoutActivation(t *testing.T) {
 	}
 }
 
+func TestRefreshRequiresConfirmationBeforeActivatingDependencyRegression(t *testing.T) {
+	base := workspaceTestPath(t, "refresh", "candidate-regression")
+	os.RemoveAll(base)
+	home := filepath.Join(base, "home")
+	payload := registryZIP(t, "scope.remote", "stable")
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write(payload)
+	}))
+	defer server.Close()
+	root := writeURLImportRoot(t, base, server.URL+"/registry.zip")
+	store, err := OpenStore(filepath.Join(base, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	first, err := RefreshRegistry(context.Background(), root, "remote", RefreshOptions{Home: home, Store: store, HTTPClient: server.Client()})
+	if err != nil || first.Status != "success" || len(first.Activated) != 1 {
+		t.Fatalf("initial refresh failed: result=%+v err=%v", first, err)
+	}
+	activeDigest := first.Activated[0].ContentDigest
+	payload = zipPayload(t, map[string]string{
+		"scope.yaml":           "api_version: locus/v1\nscope_id: scope.remote\nimports:\n  self: .\n",
+		"entities/stable.yaml": entityYAML("stable"),
+	})
+	candidate, err := RefreshRegistry(context.Background(), root, "remote", RefreshOptions{Home: home, Store: store, HTTPClient: server.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if candidate.Status != "confirmation_required" || candidate.Diff == nil || !candidate.Diff.RequiresConfirmation ||
+		candidate.CandidateSnapshot == nil || candidate.CandidateSnapshot.Completeness != Partial || len(candidate.Activated) != 0 {
+		t.Fatalf("dependency regression was not held for confirmation: %+v", candidate)
+	}
+	entry, err := store.SourceCacheEntry("scope.root", "remote")
+	if err != nil || entry.ActiveContentDigest != activeDigest {
+		t.Fatalf("candidate changed active pointer before confirmation: %+v %v", entry, err)
+	}
+	confirmed, err := RefreshRegistry(context.Background(), root, "remote", RefreshOptions{
+		Home: home, Store: store, HTTPClient: server.Client(), AllowRegression: true,
+		ExpectedCandidateDigest: candidate.CandidateSnapshot.SnapshotDigest,
+	})
+	if err != nil || confirmed.Status != "success" || len(confirmed.Activated) != 1 {
+		t.Fatalf("confirmed candidate was not activated: result=%+v err=%v", confirmed, err)
+	}
+	entry, err = store.SourceCacheEntry("scope.root", "remote")
+	if err != nil || entry.ActiveContentDigest == activeDigest {
+		t.Fatalf("confirmed candidate did not replace active pointer: %+v %v", entry, err)
+	}
+	view, err := CollectRegistry(root, CollectorOptions{Home: home, Store: store})
+	if err != nil || view.Completeness != Partial || len(view.BlockedImports) != 1 || view.BlockedImports[0].Reason != "cycle" {
+		t.Fatalf("confirmed partial dependency graph was not observable: view=%+v err=%v", view, err)
+	}
+}
+
 func TestExtractRegistryZIPRejectsUnsafeEntries(t *testing.T) {
 	base := workspaceTestPath(t, "refresh", "unsafe-zip")
 	os.RemoveAll(base)

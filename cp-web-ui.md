@@ -16,8 +16,8 @@
 ## Scope
 
 - 主作用域：`internal/web/ui/src/`、`internal/web/ui/index.html`、Vite 与 TypeScript 配置、前端依赖清单。
-- 前端入口：`src/main.ts`、`src/App.vue`、`src/router.ts`；当前视图为 Graph、Status、Knowledge。
-- 数据边界：`src/api.ts` 消费本机 `/api/v0`；公共可观察行为以 [`documents/design/contracts/Web契约.md`](documents/design/contracts/Web契约.md) 为准。
+- 前端入口：`src/main.ts`、`src/App.vue`、`src/router.ts`；稳定全局入口为 Locus Catalog/Dependency Graph，Scope 工作区包含 Graph、Status、Knowledge、Inspect。
+- 数据边界：`src/api.ts` 消费本机 `/api/v0`；Scope Catalog、Dependency Snapshot、refresh impact 与 scope-aware 查询的公共行为以 [`documents/design/contracts/Web契约.md`](documents/design/contracts/Web契约.md) 为准。
 - 直接集成方：`internal/web/ui/assets.go` 提供可选页面 Handler，`internal/web/server.go`、`internal/web/api.go` 提供 Web API；构建组合以[产物设计](documents/design/产物设计.md)为准。
 - 验证边界：前端构建、实际浏览器中的目标流程，以及命中 Web 行为时的工作区本地 E2E CLI 流程。
 - 不在本平面内独立改变 Core 领域语义、Registry/Observation 模型、CLI 契约、HTTP 安全边界或 `/api/v0` 版本策略；这些改动必须提升到 `cp-locus-link.md` 协同处理。
@@ -77,6 +77,9 @@
 - 每项演进先冻结用户任务、入口视图、关键操作、成功反馈、错误态、空态和窄屏行为；不得以无边界视觉重做替代具体目标。
 - 桌面侧边栏在 `184px` 展开态与 `56px` 图标态之间切换，折叠入口固定在侧边栏底部，并使用 Element Plus Menu 的公开 collapse API 保持图标居中；折叠状态只属于当前页面实例。移动端保持横向主导航并隐藏无意义的折叠入口。
 - 信息优先级服务于 operational context：先呈现对象身份、关系、能力与 evidence，再呈现装饰性信息；Scope 与 Binding 不伪装成 operational graph node。
+- 侧栏永久显示全局 Locus 入口；仅在 `/scopes/:scopeId/*` 中显示当前 Scope 的 Graph、Status、Knowledge、Inspect。选中依赖节点只更新详情与深链，打开 Scope 必须由显式操作触发。
+- Locus Dependency Graph 默认合并全部 openable Root 的完整 Dependency Snapshot；Root 选择、搜索和“仅问题”只从总图派生子图，不保留“展开全部”或默认深度裁剪。remote/cache Scope 只有满足后端 openable 契约时才能进入 Scope 工作区。
+- 短暂的 mutation 成功、部分成功与失败反馈使用不参与文档流的全局消息；需要持续阅读的业务事实可保留在所属 surface，要求用户审阅/决策的结果使用 Dialog，不得通过临时 Alert 改变主工作区位置。
 
 ### 实现边界
 
@@ -101,7 +104,3 @@
 
 ## Task Board
 
-
-### 暂缓
-
-- [ ] Home Catalog 与多 Scope 注册、切换和编辑组织：等待 Core、CLI 与 Web 公共契约实现后再接入；当前应用壳只表达服务实际装载的 active Scope。

@@ -102,6 +102,18 @@ CLI 可以连续执行这些步骤，但 Registry 创建失败不得留下有效
 
 项目发现可以使用当前目录向上查找 embedded Registry，也可以使用用户登记表中的项目路径关联。多个发现结果不能按 first match 静默覆盖；相同根可去重，无法证明相同则报告冲突并要求显式选择。
 
+## Locus 管理面
+
+Web 的 Locus 页面是用户级稳定入口，内部由 Scope Catalog 与 Dependency Graph 两个页签组成：
+
+- Catalog 读取用户根与项目反向登记，标记 available、missing、invalid 或 identity mismatch；
+- 只有用户根和有效 registered Project Scope 可以作为独立 Root 打开；
+- remote/cache Scope 可以在依赖图中选中、查看 provenance 和沿边导航，但不会隐式提升为 Root；
+- 节点选中与打开 Scope 是两个操作；沿图检查不得隐式改变当前工作区；
+- Dependency Snapshot 保留 Root digest、snapshot digest、collection time、complete/partial、Scope 节点、多 alias import edge 与 blocked diagnostics。
+
+Locus 页面和 Scope 工作区是不同层次：前者负责发现、登记状态和依赖分析；后者负责具体 Root 下的 Graph、Status、Knowledge 与 Inspect。
+
 ## Remote cache 与 refresh
 
 ### 一般规则
@@ -112,17 +124,22 @@ Git 和 URL Source 必须先物化到当前用户级 Locus 的隔离缓存。普
 refresh
 → fetch into isolated candidate
 → strict decode and validate Registry
-→ collect explicit imports independently and record blocked edges
-→ verify scope_id and documentation containment
-→ record immutable provenance
-→ atomic activate candidate
+→ recursively collect candidate imports through an overlay cache
+→ build candidate Dependency Snapshot
+→ diff against active Dependency Snapshot
+→ auto-activate when no regression
+→ otherwise retain active and require explicit confirmation
+→ atomically activate all involved edge pointers and non-conflicting authorities
 ```
 
-刷新失败时：
+刷新失败或回退时：
 
+- Candidate 自身无法严格装载、`scope_id` 不匹配或 containment 失败：禁止激活；
 - 已有最后有效缓存：继续使用该版本，并记录 refresh error；
 - 首次获取且没有有效缓存：阻断对应 import edge，其他 Scope 保持可用；
-- 失败 candidate 不得部分覆盖 active cache；
+- 新增 blocked、cycle、authority conflict 或 completeness 回退：返回 active/candidate snapshot 与 diff，等待显式确认；
+- 确认必须绑定已审阅的 candidate snapshot digest；重新获取后 snapshot 变化则重新审阅；
+- 同一批 edge pointer 在单个 SQLite transaction 中切换，不允许逐边立即激活；
 - 不得用 Observation 掩盖 Source 或声明错误。
 
 缓存位置只是实现细节，不进入 Scope 或 object identity。

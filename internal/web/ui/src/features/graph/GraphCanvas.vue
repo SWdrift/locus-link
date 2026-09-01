@@ -109,8 +109,8 @@ const edges = computed<Edge<LayoutEdgeData>[]>(() =>
 }
 
 .graph-canvas__node {
-  width: 196px;
-  height: 76px;
+  width: 100%;
+  height: 100%;
   display: grid;
   align-content: center;
   gap: var(--locus-space-2);

@@ -1,0 +1,5 @@
+api_version: locus/v1
+type: entity
+id: {{WORKSTATION}}
+kind: workstation
+name: Beta 模拟工作站

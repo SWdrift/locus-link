@@ -9,10 +9,12 @@ import PageHeader from '../components/PageHeader.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { usePreferences } from '../preferences'
 import { useStatusQuery } from '../queries'
+import { scopePath, useScopeID } from '../scope-context'
 
 const { t } = useI18n()
 const preferences = usePreferences()
 const statusQuery = useStatusQuery()
+const scopeID = useScopeID()
 const statusOrder: EvidenceStatus[] = ['success', 'failure', 'stale', 'unknown']
 const linkSearchText = ref('')
 const linkStatusFilter = ref<'all' | EvidenceStatus>('all')
@@ -135,7 +137,7 @@ const formatObservedAt = (value: string) =>
                 </ElTableColumn>
                 <ElTableColumn prop="link_id" :label="t('status.links')" min-width="220">
                   <template #default="{ row }">
-                    <RouterLink :to="{ path: '/graph', query: { kind: 'link', id: row.link_id } }">
+                    <RouterLink :to="{ path: scopePath(scopeID, 'graph'), query: { kind: 'link', id: row.link_id } }">
                       <ElButton link type="primary" class="technical-id">{{ row.link_id }}</ElButton>
                     </RouterLink>
                   </template>
@@ -144,7 +146,7 @@ const formatObservedAt = (value: string) =>
                   <template #default="{ row }"><StatusBadge :status="row.status" /></template>
                 </ElTableColumn>
                 <ElTableColumn :label="t('status.provider')" width="100">
-                  <template #default="{ row }">{{ row.observation?.provider ?? '—' }}</template>
+                  <template #default="{ row }">{{ row.provider }}</template>
                 </ElTableColumn>
                 <ElTableColumn :label="t('status.observed')" min-width="168">
                   <template #default="{ row }">
@@ -208,7 +210,7 @@ const formatObservedAt = (value: string) =>
                 </ElTableColumn>
                 <ElTableColumn prop="route_id" :label="t('status.routes')" min-width="220">
                   <template #default="{ row }">
-                    <RouterLink :to="{ path: '/graph', query: { route: row.route_id } }">
+                    <RouterLink :to="{ path: scopePath(scopeID, 'graph'), query: { route: row.route_id } }">
                       <ElButton link type="primary" class="technical-id">{{ row.route_id }}</ElButton>
                     </RouterLink>
                   </template>

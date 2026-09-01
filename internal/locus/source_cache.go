@@ -111,39 +111,58 @@ func (s *Store) ScopeAuthority(scopeID string) (*ScopeAuthority, error) {
 	return &value, err
 }
 
+type sourceActivation struct {
+	Entry           SourceCacheEntry
+	Source          Source
+	UpdateAuthority bool
+}
+
 func (s *Store) activateSource(ctx context.Context, entry SourceCacheEntry, source Source) error {
-	provenance, err := json.Marshal(sanitizeSource(source))
-	if err != nil {
-		return err
+	return s.activateSources(ctx, []sourceActivation{{Entry: entry, Source: source, UpdateAuthority: true}})
+}
+
+func (s *Store) activateSources(ctx context.Context, activations []sourceActivation) error {
+	if len(activations) == 0 {
+		return nil
 	}
-	now := time.Now().UTC()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, `INSERT INTO source_cache_entries(
-		owner_scope_id,import_alias,configured_source_digest,expected_scope_id,actual_scope_id,active_content_digest,
-		resolved_revision,object_path,etag,last_modified,last_refresh_status,last_refresh_error,refreshed_at
-	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-	ON CONFLICT(owner_scope_id,import_alias) DO UPDATE SET
-		configured_source_digest=excluded.configured_source_digest,expected_scope_id=excluded.expected_scope_id,
-		actual_scope_id=excluded.actual_scope_id,active_content_digest=excluded.active_content_digest,
-		resolved_revision=excluded.resolved_revision,object_path=excluded.object_path,etag=excluded.etag,
-		last_modified=excluded.last_modified,last_refresh_status=excluded.last_refresh_status,
-		last_refresh_error='',refreshed_at=excluded.refreshed_at`,
-		entry.OwnerScopeID, entry.ImportAlias, entry.ConfiguredSourceDigest, entry.ExpectedScopeID, entry.ActualScopeID,
-		entry.ActiveContentDigest, entry.ResolvedRevision, entry.ObjectPath, entry.ETag, entry.LastModified, "success", "", now.Format(time.RFC3339Nano))
-	if err != nil {
-		return err
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO scope_authorities(scope_id,active_content_digest,object_path,provenance,activated_at)
-		VALUES(?,?,?,?,?)
-		ON CONFLICT(scope_id) DO UPDATE SET active_content_digest=excluded.active_content_digest,
-		object_path=excluded.object_path,provenance=excluded.provenance,activated_at=excluded.activated_at`,
-		entry.ActualScopeID, entry.ActiveContentDigest, entry.ObjectPath, string(provenance), now.Format(time.RFC3339Nano))
-	if err != nil {
-		return err
+	for _, activation := range activations {
+		entry := activation.Entry
+		provenance, err := json.Marshal(sanitizeSource(activation.Source))
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO source_cache_entries(
+			owner_scope_id,import_alias,configured_source_digest,expected_scope_id,actual_scope_id,active_content_digest,
+			resolved_revision,object_path,etag,last_modified,last_refresh_status,last_refresh_error,refreshed_at
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(owner_scope_id,import_alias) DO UPDATE SET
+			configured_source_digest=excluded.configured_source_digest,expected_scope_id=excluded.expected_scope_id,
+			actual_scope_id=excluded.actual_scope_id,active_content_digest=excluded.active_content_digest,
+			resolved_revision=excluded.resolved_revision,object_path=excluded.object_path,etag=excluded.etag,
+			last_modified=excluded.last_modified,last_refresh_status=excluded.last_refresh_status,
+			last_refresh_error='',refreshed_at=excluded.refreshed_at`,
+			entry.OwnerScopeID, entry.ImportAlias, entry.ConfiguredSourceDigest, entry.ExpectedScopeID, entry.ActualScopeID,
+			entry.ActiveContentDigest, entry.ResolvedRevision, entry.ObjectPath, entry.ETag, entry.LastModified, "success", "", now)
+		if err != nil {
+			return err
+		}
+		if !activation.UpdateAuthority {
+			continue
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO scope_authorities(scope_id,active_content_digest,object_path,provenance,activated_at)
+			VALUES(?,?,?,?,?)
+			ON CONFLICT(scope_id) DO UPDATE SET active_content_digest=excluded.active_content_digest,
+			object_path=excluded.object_path,provenance=excluded.provenance,activated_at=excluded.activated_at`,
+			entry.ActualScopeID, entry.ActiveContentDigest, entry.ObjectPath, string(provenance), now)
+		if err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }

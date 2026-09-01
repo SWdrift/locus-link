@@ -16,6 +16,7 @@ const (
 
 type BlockedImport struct {
 	SourceScopeID string   `json:"source_scope_id"`
+	TargetScopeID string   `json:"target_scope_id,omitempty"`
 	AliasPath     []string `json:"alias_path"`
 	Source        Source   `json:"source"`
 	Reason        string   `json:"reason"`

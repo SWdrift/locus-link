@@ -15,7 +15,39 @@ export interface GraphLayout {
 }
 
 const elk = new ELK({ workerFactory: () => new ELKWorker() })
+export const GRAPH_NODE_WIDTH = 196
+export const GRAPH_NODE_HEIGHT = 76
 
+interface LayeredEdge {
+  id: string
+  source: string
+  target: string
+}
+
+const layeredLayoutOptions = {
+  'elk.algorithm': 'layered',
+  'elk.direction': 'RIGHT',
+  'elk.edgeRouting': 'ORTHOGONAL',
+  'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
+  'elk.layered.nodePlacement.bk.fixedAlignment': 'BALANCED',
+  'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
+  'elk.layered.crossingMinimization.greedySwitch.type': 'TWO_SIDED',
+  'elk.layered.spacing.nodeNodeBetweenLayers': '88',
+  'elk.spacing.nodeNode': '44',
+  'elk.spacing.componentComponent': '72',
+  'elk.separateConnectedComponents': 'true',
+  'elk.padding': '[top=36,left=36,bottom=36,right=36]',
+}
+
+export async function layoutLayeredGraph(nodeIDs: string[], edges: LayeredEdge[]) {
+  const graph = await elk.layout({
+    id: 'root',
+    layoutOptions: layeredLayoutOptions,
+    children: nodeIDs.map(id => ({ id, width: GRAPH_NODE_WIDTH, height: GRAPH_NODE_HEIGHT })),
+    edges: edges.map(edge => ({ id: edge.id, sources: [edge.source], targets: [edge.target] })),
+  })
+  return new Map((graph.children ?? []).map(node => [node.id, { x: node.x ?? 0, y: node.y ?? 0 }]))
+}
 export async function layoutGraph(value: GraphView): Promise<GraphLayout> {
   const entities = [...value.entities].sort((left, right) => left.canonical_id.localeCompare(right.canonical_id))
   const links = [...value.links].sort((left, right) => left.canonical_id.localeCompare(right.canonical_id))
@@ -23,23 +55,10 @@ export async function layoutGraph(value: GraphView): Promise<GraphLayout> {
     nodes: entities.map(item => item.canonical_id),
     edges: links.map(item => [item.canonical_id, item.from, item.to]),
   })
-  const graph = await elk.layout({
-    id: 'root',
-    layoutOptions: {
-      'elk.algorithm': 'layered',
-      'elk.direction': 'RIGHT',
-      'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
-      'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
-      'elk.layered.spacing.nodeNodeBetweenLayers': '88',
-      'elk.spacing.nodeNode': '44',
-      'elk.spacing.componentComponent': '72',
-      'elk.separateConnectedComponents': 'true',
-      'elk.padding': '[top=36,left=36,bottom=36,right=36]',
-    },
-    children: entities.map(entity => ({ id: entity.canonical_id, width: 196, height: 76 })),
-    edges: links.map(link => ({ id: link.canonical_id, sources: [link.from], targets: [link.to] })),
-  })
-  const positions = new Map((graph.children ?? []).map(node => [node.id, node]))
+  const positions = await layoutLayeredGraph(
+    entities.map(entity => entity.canonical_id),
+    links.map(link => ({ id: link.canonical_id, source: link.from, target: link.to })),
+  )
   return {
     fingerprint,
     nodes: entities.map(entity => {
@@ -47,6 +66,7 @@ export async function layoutGraph(value: GraphView): Promise<GraphLayout> {
       return {
         id: entity.canonical_id,
         position: { x: point?.x ?? 0, y: point?.y ?? 0 },
+        style: { width: `${GRAPH_NODE_WIDTH}px`, height: `${GRAPH_NODE_HEIGHT}px` },
         data: {
           label: entity.name,
           kind: entity.kind,

@@ -1,0 +1,9 @@
+api_version: locus/v1
+type: route
+id: route.prod-shell
+steps:
+  - link: link.prod-frp
+  - link: link.prod-ssh
+documentation:
+  - ref: ../docs/production-access.md
+    title: Beta 生产访问

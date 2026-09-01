@@ -55,7 +55,7 @@ func (p *Providers) Get(name string) (Provider, bool) { value, ok := p.values[na
 
 func (p *Providers) Available() []string {
 	seen := map[string]bool{}
-	var available []string
+	available := make([]string, 0, len(p.values))
 	for _, provider := range p.values {
 		executable := provider.Executable()
 		if seen[executable] {

@@ -1,0 +1,7 @@
+api_version: locus/v1
+scope_id: {{PROJECT_ID}}
+imports:
+  customer: ../../../../environments/customer-a/.locus/registry
+bindings:
+  production-host: customer::host.prod-01
+  build-sandbox: service.beta-sandbox

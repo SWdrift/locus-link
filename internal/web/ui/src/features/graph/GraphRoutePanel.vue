@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 import CopyValue from '../../components/CopyValue.vue'
 import type { EvidenceStatus, GraphView, StatusView } from '../../domain/locus'
 import StatusBadge from '../../components/StatusBadge.vue'
+import { scopePath, useScopeID } from '../../scope-context'
 
 const props = defineProps<{
   graph: GraphView
@@ -13,6 +14,7 @@ const props = defineProps<{
 const emit = defineEmits<{ probe: [subject: string] }>()
 const selectedRoute = defineModel<string>({ required: true })
 const { t } = useI18n()
+const scopeID = useScopeID()
 
 const activeRoute = computed(() => props.graph.routes.find(route => route.canonical_id === selectedRoute.value))
 const routeStatus = computed<EvidenceStatus>(() => {
@@ -45,7 +47,7 @@ const routeStatus = computed<EvidenceStatus>(() => {
           <RouterLink
             v-for="id in activeRoute.documentation_ids ?? []"
             :key="id"
-            :to="{ path: '/knowledge', query: { document: id } }"
+            :to="{ path: scopePath(scopeID, 'knowledge'), query: { document: id } }"
           >
             <ElButton link type="primary">{{ id }}</ElButton>
           </RouterLink>

@@ -1,2 +1,8 @@
 api_version: locus/v1
 scope_id: remote.url
+imports:
+  child:
+    scope_id: remote.url-child
+    source:
+      kind: url
+      uri: {{CHILD_URL}}

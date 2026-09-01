@@ -1,5 +1,7 @@
 export type EvidenceStatus = 'success' | 'failure' | 'stale' | 'unknown'
 export type Completeness = 'complete' | 'partial'
+export type ScopeKind = 'user' | 'project' | 'remote' | 'root'
+export type ScopeAvailability = 'available' | 'missing' | 'invalid' | 'identity_mismatch'
 
 export interface Source {
   kind: string
@@ -9,6 +11,7 @@ export interface Source {
 
 export interface BlockedImport {
   source_scope_id: string
+  target_scope_id?: string
   alias_path: string[]
   source: Source
   reason: string
@@ -53,6 +56,7 @@ export interface ProjectRegistration {
   scope_id: string
   registry_path: string
   registered_at: string
+  available: boolean
 }
 
 export interface SourceCacheEntry {
@@ -71,6 +75,87 @@ export interface SourceCacheEntry {
   last_refresh_status: string
   last_refresh_error?: string
   refreshed_at: string
+}
+
+export interface LocusScopeEntry {
+  scope_id: string
+  kind: 'user' | 'project'
+  registry_path: string
+  registered_at?: string
+  availability: ScopeAvailability
+  openable: boolean
+  active: boolean
+}
+
+export interface DependencyNode {
+  scope_id: string
+  content_digest: string
+  source: Source
+  resolved_revision?: string
+  alias_paths: string[][]
+  root: boolean
+  kind: ScopeKind
+  openable: boolean
+  availability: ScopeAvailability
+}
+
+export interface DependencyEdge {
+  source_scope_id: string
+  target_scope_id?: string
+  alias: string
+  alias_path: string[]
+  source: Source
+  content_digest?: string
+  status: 'active' | 'blocked'
+  reason?: string
+  cycle_scope_ids?: string[]
+}
+
+export interface DependencySnapshot {
+  root_scope_id: string
+  root_digest: string
+  snapshot_digest: string
+  collected_at: string
+  completeness: Completeness
+  nodes: DependencyNode[]
+  edges: DependencyEdge[]
+  blocked_imports: BlockedImport[]
+}
+
+export interface DependencyNodeChange {
+  scope_id: string
+  change: 'added' | 'removed' | 'digest_changed' | 'availability_changed'
+  before_digest?: string
+  after_digest?: string
+}
+
+export interface DependencyEdgeChange {
+  source_scope_id: string
+  alias: string
+  change: 'added' | 'removed' | 'target_changed' | 'source_changed' | 'status_changed'
+  before?: DependencyEdge
+  after?: DependencyEdge
+}
+
+export interface DependencyDiff {
+  nodes: DependencyNodeChange[]
+  edges: DependencyEdgeChange[]
+  completeness_changed: boolean
+  new_blocked_imports: BlockedImport[]
+  resolved_blocked_imports: BlockedImport[]
+  requires_confirmation: boolean
+}
+
+export interface RefreshResult {
+  status: 'success' | 'partial' | 'failure' | 'confirmation_required'
+  activated: Array<{ owner_scope_id: string; alias_path: string[]; scope_id: string; content_digest: string }>
+  retained: Array<{ owner_scope_id: string; alias_path: string[]; scope_id: string; content_digest: string }>
+  refresh_errors: Array<{ owner_scope_id: string; alias_path: string[]; reason: string }>
+  completeness: Completeness
+  blocked_imports: BlockedImport[]
+  active_snapshot?: DependencySnapshot
+  candidate_snapshot?: DependencySnapshot
+  diff?: DependencyDiff
 }
 
 export interface RootContext {
@@ -152,6 +237,7 @@ export interface Observation {
 export interface LinkEvidence {
   link_id: string
   status: EvidenceStatus
+  provider: string
   observation?: Observation
 }
 

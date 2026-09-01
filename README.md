@@ -43,7 +43,7 @@ resolve → probe（需要时）→ resolve
 | `locus status [link-or-route-id]` | 查看详细 evidence |
 | `locus init --scope-id <id>` / `locus user init --scope-id <id>` | 创建项目或用户 Registry |
 | `locus project register\|unregister\|list` | 管理项目反向登记 |
-| `locus refresh [alias-path]` | 显式获取、校验并激活 remote Source |
+| `locus refresh [alias-path]` | 预演 remote Dependency Snapshot；回退时用 `--allow-regression --expected-candidate-digest <digest>` 显式确认 |
 | `locus web` | 启动仅监听本机回环地址的 Web UI |
 
 完整 flags、输出、退出码和副作用见 [CLI 公共契约](documents/design/contracts/CLI契约.md)；Web HTTP 接口和安全边界见[本机 Web 契约](documents/design/contracts/Web契约.md)。

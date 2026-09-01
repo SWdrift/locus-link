@@ -28,15 +28,17 @@ type CLI struct {
 }
 
 type options struct {
-	Registry          string
-	From              string
-	Vantage           string
-	MechanismBindings string
-	Timeout           string
-	Capability        string
-	ScopeID           string
-	ImportUser        string
-	Register          bool
+	Registry                string
+	From                    string
+	Vantage                 string
+	MechanismBindings       string
+	Timeout                 string
+	Capability              string
+	ScopeID                 string
+	ImportUser              string
+	Register                bool
+	AllowRegression         bool
+	ExpectedCandidateDigest string
 }
 
 type cliError struct {
@@ -198,6 +200,8 @@ func (c *CLI) refreshCommand(state *commandState) *cobra.Command {
 		},
 	}
 	addRegistryFlag(command, &opts)
+	command.Flags().BoolVar(&opts.AllowRegression, "allow-regression", false, "Activate a candidate that makes the dependency view incomplete")
+	command.Flags().StringVar(&opts.ExpectedCandidateDigest, "expected-candidate-digest", "", "Require the reviewed candidate snapshot digest")
 	return command
 }
 
@@ -495,9 +499,15 @@ func (c *CLI) refresh(opts options, args []string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	result, err := locus.RefreshRegistry(context.Background(), assembly.registry.Root, aliasPath, locus.RefreshOptions{Home: layout.Root, Store: store})
+	result, err := locus.RefreshRegistry(context.Background(), assembly.registry.Root, aliasPath, locus.RefreshOptions{
+		Home: layout.Root, Store: store, AllowRegression: opts.AllowRegression,
+		ExpectedCandidateDigest: opts.ExpectedCandidateDigest,
+	})
 	if err != nil {
 		return nil, cliError{code: 2, err: err}
+	}
+	if result.Status == "confirmation_required" {
+		return result, cliError{code: 6, err: errors.New("refresh candidate requires --allow-regression")}
 	}
 	if len(result.RefreshErrors) != 0 {
 		return result, cliError{code: 5, err: errors.New("refresh completed with failures")}

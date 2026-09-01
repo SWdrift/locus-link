@@ -155,22 +155,19 @@ Alias 只解决引用歧义：
 
 ### 去重、回环与收集状态
 
-收集器维护本次遍历状态，而不是把导入者信息写入下一级 Registry：
+收集器维护本次遍历状态和以 `scope_id` 为节点的有向图，而不是把导入者信息写入下一级 Registry：
 
 ```text
-visiting = 当前祖先 Scope 链
-visited  = 已完整处理的 scope_id 集合
-path     = 对应 import aliases 和 Sources
+expanded = 已展开的 scope_id@content-digest
+graph    = 已接受的 Scope import edges
+path     = 当前 edge 的完整 alias path 与 Source
 ```
 
-规则：
-
-1. 目标 `scope_id` 已在 `visited`：复用节点并保留新的 alias path；
-2. 目标 `scope_id` 已在 `visiting`：当前边是回边，阻断该边并报告完整回环路径；
-3. 首次到达：加载、校验并递归收集其显式 imports；
-4. 下一级 Scope 只声明自己的 imports，不需要知道谁导入了自己。
+添加 `A → B` 前，若 `A == B`，或图中已存在 `B → … → A`，当前 edge 被阻断并记录完整 `cycle_scope_ids`；同一 immutable Registry 由 `expanded` 去重，compose 后再以 SCC 校验 active graph 无环。首次接受的节点继续递归其显式 imports；下一级 Scope 只声明自己的 imports，不需要知道谁导入了自己。
 
 例如 `A → B → C → A` 只阻断 `C → A`；已成功加载的 A、B、C 保持可用。
+
+收集结果可投影为 Dependency Snapshot：Root Scope/digest、稳定 snapshot digest、collection time、complete/partial、按 Scope identity 合并的节点、每条 alias import edge、全部 alias paths 与 blocked diagnostics。它是 Inspect、Dependency Graph 和 refresh impact 的共同输入，不建立第二套依赖算法。
 
 ### 相同 Scope 的 Source 冲突
 

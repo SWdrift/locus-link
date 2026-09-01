@@ -55,10 +55,18 @@ type probeRequest struct {
 	TimeoutMS int    `json:"timeout_ms"`
 }
 
+type refreshRequest struct {
+	ScopeID                 string `json:"scope_id"`
+	AliasPath               string `json:"alias_path"`
+	AllowRegression         bool   `json:"allow_regression"`
+	ExpectedCandidateDigest string `json:"expected_candidate_digest"`
+}
+
 type apiHandler struct {
 	registry              *locus.Registry
 	providers             *locus.Providers
 	statePath             string
+	home                  string
 	defaultFrom           string
 	defaultVantage        string
 	mechanismBindingsPath string
@@ -99,30 +107,18 @@ func newHandler(config Config, uiFactory UIFactory) (http.Handler, error) {
 	}
 	providers := locus.NewProviders()
 	runtime.AvailableTools = providers.Available()
-	imports := make([]importResponse, 0, len(registry.Aliases))
-	for alias, scopeID := range registry.Aliases {
-		imports = append(imports, importResponse{Alias: alias, ScopeID: scopeID})
-	}
-	sort.Slice(imports, func(i, j int) bool { return imports[i].Alias < imports[j].Alias })
-	graph, err := registry.Graph()
+	initialContext, err := buildContextResponse(registry, root, runtime, statePath)
 	if err != nil {
 		return nil, err
 	}
-	bindings := map[string]string{}
-	for _, binding := range registry.Bindings {
-		if binding.ScopeID == registry.RootScopeID {
-			bindings[binding.ID] = binding.Target
-		}
+	home, err := locus.DefaultHome()
+	if err != nil {
+		return nil, err
 	}
 	api := &apiHandler{
-		registry: registry, providers: providers, statePath: statePath,
+		registry: registry, providers: providers, statePath: statePath, home: home,
 		defaultFrom: runtime.CurrentEntity, defaultVantage: runtime.Vantage, mechanismBindingsPath: config.MechanismBindings,
-		context: contextResponse{
-			ActiveScope: scopeResponse{ID: registry.RootScopeID}, Root: root, Imports: imports,
-			ImportEdges: append([]locus.ImportEdge{}, registry.ImportEdges...), Bindings: bindings,
-			BindingDetails: graph.Bindings, Runtime: runtime, ObservationStore: statePath,
-			Completeness: registry.Completeness, BlockedImports: append([]locus.BlockedImport{}, registry.BlockedImports...),
-		},
+		context: initialContext,
 	}
 	var ui http.Handler = http.NotFoundHandler()
 	if uiFactory != nil {
@@ -133,6 +129,9 @@ func newHandler(config Config, uiFactory UIFactory) (http.Handler, error) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v0/context", api.getContext)
+	mux.HandleFunc("GET /api/v0/locus/scopes", api.getLocusScopes)
+	mux.HandleFunc("GET /api/v0/locus/dependencies", api.getDependencies)
+	mux.HandleFunc("POST /api/v0/locus/refresh", api.postRefresh)
 	mux.HandleFunc("GET /api/v0/graph", api.getGraph)
 	mux.HandleFunc("GET /api/v0/status", api.getStatus)
 	mux.HandleFunc("GET /api/v0/knowledge", api.getKnowledge)
@@ -147,12 +146,36 @@ func newHandler(config Config, uiFactory UIFactory) (http.Handler, error) {
 	return secureLocalHandler(mux), nil
 }
 
-func (a *apiHandler) getContext(response http.ResponseWriter, _ *http.Request) {
-	writeJSON(response, http.StatusOK, a.context)
+func (a *apiHandler) getContext(response http.ResponseWriter, request *http.Request) {
+	if request.URL.Query().Get("scope") == "" {
+		writeJSON(response, http.StatusOK, a.context)
+		return
+	}
+	registry, root, err := a.registryForRequest(request)
+	if err != nil {
+		writeAPIError(response, http.StatusBadRequest, err)
+		return
+	}
+	runtime, err := a.defaultRuntime(registry)
+	if err != nil {
+		writeAPIError(response, http.StatusBadRequest, err)
+		return
+	}
+	result, err := buildContextResponse(registry, root, runtime, a.statePath)
+	if err != nil {
+		writeAPIError(response, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, result)
 }
 
-func (a *apiHandler) getGraph(response http.ResponseWriter, _ *http.Request) {
-	result, err := a.registry.Graph()
+func (a *apiHandler) getGraph(response http.ResponseWriter, request *http.Request) {
+	registry, _, err := a.registryForRequest(request)
+	if err != nil {
+		writeAPIError(response, http.StatusBadRequest, err)
+		return
+	}
+	result, err := registry.Graph()
 	if err != nil {
 		writeAPIError(response, http.StatusInternalServerError, err)
 		return
@@ -161,7 +184,12 @@ func (a *apiHandler) getGraph(response http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *apiHandler) getStatus(response http.ResponseWriter, request *http.Request) {
-	runtime, err := a.runtime(request.URL.Query().Get("from"), request.URL.Query().Get("vantage"))
+	registry, _, err := a.registryForRequest(request)
+	if err != nil {
+		writeAPIError(response, http.StatusBadRequest, err)
+		return
+	}
+	runtime, err := a.runtime(registry, request.URL.Query().Get("from"), request.URL.Query().Get("vantage"))
 	if err != nil {
 		writeAPIError(response, http.StatusBadRequest, err)
 		return
@@ -172,7 +200,7 @@ func (a *apiHandler) getStatus(response http.ResponseWriter, request *http.Reque
 		return
 	}
 	defer store.Close()
-	result, err := a.registry.Status(request.Context(), runtime, a.providers, store)
+	result, err := registry.Status(request.Context(), runtime, a.providers, store)
 	if err != nil {
 		writeAPIError(response, http.StatusInternalServerError, err)
 		return
@@ -180,8 +208,13 @@ func (a *apiHandler) getStatus(response http.ResponseWriter, request *http.Reque
 	writeJSON(response, http.StatusOK, result)
 }
 
-func (a *apiHandler) getKnowledge(response http.ResponseWriter, _ *http.Request) {
-	result, err := a.registry.Documents()
+func (a *apiHandler) getKnowledge(response http.ResponseWriter, request *http.Request) {
+	registry, _, err := a.registryForRequest(request)
+	if err != nil {
+		writeAPIError(response, http.StatusBadRequest, err)
+		return
+	}
+	result, err := registry.Documents()
 	if err != nil {
 		writeAPIError(response, http.StatusInternalServerError, err)
 		return
@@ -190,7 +223,12 @@ func (a *apiHandler) getKnowledge(response http.ResponseWriter, _ *http.Request)
 }
 
 func (a *apiHandler) getDocument(response http.ResponseWriter, request *http.Request) {
-	result, err := a.registry.Document(request.PathValue("id"))
+	registry, _, err := a.registryForRequest(request)
+	if err != nil {
+		writeAPIError(response, http.StatusBadRequest, err)
+		return
+	}
+	result, err := registry.Document(request.PathValue("id"))
 	if err != nil {
 		writeAPIError(response, http.StatusNotFound, err)
 		return
@@ -198,12 +236,17 @@ func (a *apiHandler) getDocument(response http.ResponseWriter, request *http.Req
 	writeJSON(response, http.StatusOK, result)
 }
 
-func (a *apiHandler) getValidation(response http.ResponseWriter, _ *http.Request) {
+func (a *apiHandler) getValidation(response http.ResponseWriter, request *http.Request) {
+	registry, _, err := a.registryForRequest(request)
+	if err != nil {
+		writeAPIError(response, http.StatusBadRequest, err)
+		return
+	}
 	writeJSON(response, http.StatusOK, validationResponse{
-		Valid: a.registry.Completeness == locus.Complete, ActiveScope: a.registry.RootScopeID,
-		Entities: len(a.registry.Entities), Links: len(a.registry.Links), Routes: len(a.registry.Routes),
-		Completeness:   a.registry.Completeness,
-		BlockedImports: append([]locus.BlockedImport{}, a.registry.BlockedImports...),
+		Valid: registry.Completeness == locus.Complete, ActiveScope: registry.RootScopeID,
+		Entities: len(registry.Entities), Links: len(registry.Links), Routes: len(registry.Routes),
+		Completeness:   registry.Completeness,
+		BlockedImports: append([]locus.BlockedImport{}, registry.BlockedImports...),
 	})
 }
 
@@ -214,7 +257,12 @@ func (a *apiHandler) getResolve(response http.ResponseWriter, request *http.Requ
 		writeAPIError(response, http.StatusBadRequest, errors.New("target and capability are required"))
 		return
 	}
-	runtime, err := a.runtime(query.Get("from"), query.Get("vantage"))
+	registry, _, err := a.registryForRequest(request)
+	if err != nil {
+		writeAPIError(response, http.StatusBadRequest, err)
+		return
+	}
+	runtime, err := a.runtime(registry, query.Get("from"), query.Get("vantage"))
 	if err != nil {
 		writeAPIError(response, http.StatusBadRequest, err)
 		return
@@ -225,7 +273,7 @@ func (a *apiHandler) getResolve(response http.ResponseWriter, request *http.Requ
 		return
 	}
 	defer store.Close()
-	result, err := a.registry.Resolve(request.Context(), target, capability, runtime, a.providers, store)
+	result, err := registry.Resolve(request.Context(), target, capability, runtime, a.providers, store)
 	if err != nil {
 		writeAPIError(response, http.StatusBadRequest, err)
 		return
@@ -262,7 +310,12 @@ func (a *apiHandler) postProbe(response http.ResponseWriter, request *http.Reque
 		writeAPIError(response, http.StatusBadRequest, errors.New("timeout_ms must be between 1 and 60000"))
 		return
 	}
-	runtime, err := a.runtime(input.From, input.Vantage)
+	registry, _, err := a.registryForRequest(request)
+	if err != nil {
+		writeAPIError(response, http.StatusBadRequest, err)
+		return
+	}
+	runtime, err := a.runtime(registry, input.From, input.Vantage)
 	if err != nil {
 		writeAPIError(response, http.StatusBadRequest, err)
 		return
@@ -275,7 +328,7 @@ func (a *apiHandler) postProbe(response http.ResponseWriter, request *http.Reque
 	defer store.Close()
 	ctx, cancel := context.WithTimeout(request.Context(), time.Duration(input.TimeoutMS)*time.Millisecond)
 	defer cancel()
-	result, err := a.registry.Probe(ctx, input.Subject, runtime, a.providers, store)
+	result, err := registry.Probe(ctx, input.Subject, runtime, a.providers, store)
 	if err != nil {
 		var inputError locus.ProbeInputError
 		if errors.As(err, &inputError) {
@@ -288,10 +341,173 @@ func (a *apiHandler) postProbe(response http.ResponseWriter, request *http.Reque
 	writeJSON(response, http.StatusOK, result)
 }
 
-func (a *apiHandler) runtime(from, vantage string) (locus.RuntimeContext, error) {
-	return locus.BuildRuntime(a.registry, locus.RuntimeInput{
-		From:                  firstNonEmpty(from, a.defaultFrom),
-		Vantage:               firstNonEmpty(vantage, a.defaultVantage),
+func (a *apiHandler) getLocusScopes(response http.ResponseWriter, request *http.Request) {
+	store, err := locus.OpenStore(a.statePath)
+	if err != nil {
+		writeAPIError(response, http.StatusInternalServerError, err)
+		return
+	}
+	defer store.Close()
+	values, err := store.LocusCatalog(request.Context(), a.home, a.registry.RootScopeID)
+	if err != nil {
+		writeAPIError(response, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"scopes": values})
+}
+
+func (a *apiHandler) getDependencies(response http.ResponseWriter, request *http.Request) {
+	scopeID := firstNonEmpty(request.URL.Query().Get("root"), a.registry.RootScopeID)
+	registry, _, err := a.registryForScope(request.Context(), scopeID)
+	if err != nil {
+		writeAPIError(response, http.StatusBadRequest, err)
+		return
+	}
+	snapshot := locus.SnapshotDependency(registry)
+	store, err := locus.OpenStore(a.statePath)
+	if err != nil {
+		writeAPIError(response, http.StatusInternalServerError, err)
+		return
+	}
+	defer store.Close()
+	catalog, err := store.LocusCatalog(request.Context(), a.home, a.registry.RootScopeID)
+	if err != nil {
+		writeAPIError(response, http.StatusInternalServerError, err)
+		return
+	}
+	entries := make(map[string]locus.LocusScopeEntry, len(catalog))
+	for _, entry := range catalog {
+		entries[entry.ScopeID] = entry
+	}
+	for index := range snapshot.Nodes {
+		if entry, ok := entries[snapshot.Nodes[index].ScopeID]; ok {
+			snapshot.Nodes[index].Kind = entry.Kind
+			snapshot.Nodes[index].Openable = entry.Openable
+			snapshot.Nodes[index].Availability = entry.Availability
+		}
+	}
+	writeJSON(response, http.StatusOK, snapshot)
+}
+
+func (a *apiHandler) postRefresh(response http.ResponseWriter, request *http.Request) {
+	mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		writeAPIError(response, http.StatusUnsupportedMediaType, errors.New("content type must be application/json"))
+		return
+	}
+	request.Body = http.MaxBytesReader(response, request.Body, 64<<10)
+	var input refreshRequest
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		writeAPIError(response, http.StatusBadRequest, errors.New("invalid refresh request"))
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		writeAPIError(response, http.StatusBadRequest, errors.New("refresh request must contain one JSON object"))
+		return
+	}
+	scopeID := firstNonEmpty(input.ScopeID, a.registry.RootScopeID)
+	_, root, err := a.registryForScope(request.Context(), scopeID)
+	if err != nil {
+		writeAPIError(response, http.StatusBadRequest, err)
+		return
+	}
+	store, err := locus.OpenStore(a.statePath)
+	if err != nil {
+		writeAPIError(response, http.StatusInternalServerError, err)
+		return
+	}
+	defer store.Close()
+	result, err := locus.RefreshRegistry(request.Context(), root.RegistryPath, input.AliasPath, locus.RefreshOptions{
+		Home: a.home, Store: store, AllowRegression: input.AllowRegression,
+		ExpectedCandidateDigest: input.ExpectedCandidateDigest,
+	})
+	if err != nil {
+		writeAPIError(response, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, result)
+}
+
+func (a *apiHandler) registryForRequest(request *http.Request) (*locus.Registry, locus.RootContext, error) {
+	scopeID := request.URL.Query().Get("scope")
+	if scopeID == "" || scopeID == a.registry.RootScopeID {
+		return a.registry, a.context.Root, nil
+	}
+	return a.registryForScope(request.Context(), scopeID)
+}
+
+func (a *apiHandler) registryForScope(ctx context.Context, scopeID string) (*locus.Registry, locus.RootContext, error) {
+	if scopeID == a.registry.RootScopeID {
+		return a.registry, a.context.Root, nil
+	}
+	store, err := locus.OpenStore(a.statePath)
+	if err != nil {
+		return nil, locus.RootContext{}, err
+	}
+	defer store.Close()
+	root, err := store.OpenableScopePath(ctx, a.home, scopeID)
+	if err != nil {
+		return nil, locus.RootContext{}, err
+	}
+	return locus.LoadRegistryContext(root, store)
+}
+
+func (a *apiHandler) defaultRuntime(registry *locus.Registry) (locus.RuntimeContext, error) {
+	return a.runtime(registry, "", a.defaultVantage)
+}
+
+func buildContextResponse(registry *locus.Registry, root locus.RootContext, runtime locus.RuntimeContext, statePath string) (contextResponse, error) {
+	imports := make([]importResponse, 0, len(registry.Aliases))
+	for alias, scopeID := range registry.Aliases {
+		imports = append(imports, importResponse{Alias: alias, ScopeID: scopeID})
+	}
+	sort.Slice(imports, func(i, j int) bool { return imports[i].Alias < imports[j].Alias })
+	graph, err := registry.Graph()
+	if err != nil {
+		return contextResponse{}, err
+	}
+	bindings := map[string]string{}
+	for _, binding := range registry.Bindings {
+		if binding.ScopeID == registry.RootScopeID {
+			bindings[binding.ID] = binding.Target
+		}
+	}
+	return contextResponse{
+		ActiveScope: scopeResponse{ID: registry.RootScopeID}, Root: root, Imports: imports,
+		ImportEdges: append([]locus.ImportEdge{}, registry.ImportEdges...), Bindings: bindings,
+		BindingDetails: graph.Bindings, Runtime: runtime, ObservationStore: statePath,
+		Completeness: registry.Completeness, BlockedImports: append([]locus.BlockedImport{}, registry.BlockedImports...),
+	}, nil
+}
+
+func (a *apiHandler) runtime(registry *locus.Registry, from, vantage string) (locus.RuntimeContext, error) {
+	selectedFrom := from
+	if selectedFrom == "" && registry.RootScopeID == a.registry.RootScopeID {
+		selectedFrom = a.defaultFrom
+	}
+	if selectedFrom == "" {
+		ids := make([]string, 0, len(registry.Entities))
+		for id, entity := range registry.Entities {
+			if entity.ScopeID == registry.RootScopeID {
+				ids = append(ids, id)
+			}
+		}
+		sort.Strings(ids)
+		if len(ids) != 0 {
+			selectedFrom = ids[0]
+		}
+	}
+	if selectedFrom == "" {
+		runtime := locus.RuntimeContext{Vantage: firstNonEmpty(vantage, a.defaultVantage), MechanismBindingsSource: a.mechanismBindingsPath}
+		var err error
+		runtime.CWD, err = os.Getwd()
+		runtime.AvailableTools = a.providers.Available()
+		return runtime, err
+	}
+	return locus.BuildRuntime(registry, locus.RuntimeInput{
+		From: selectedFrom, Vantage: firstNonEmpty(vantage, a.defaultVantage),
 		MechanismBindingsPath: a.mechanismBindingsPath,
 	})
 }

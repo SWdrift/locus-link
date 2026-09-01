@@ -157,6 +157,29 @@ func TestRefreshCLIReportsFailureResultAndExitCodes(t *testing.T) {
 		t.Fatalf("context returned incomplete cache provenance: %#v", cacheEntry)
 	}
 
+	payload = cliRegistryZIPWithManifest(t, "api_version: locus/v1\nscope_id: scope.remote\nimports:\n  self: .\n")
+	stdout.Reset()
+	stderr.Reset()
+	if code := NewCLI(&stdout, &stderr).Run([]string{"refresh", "remote", "--registry", root, "--json"}); code != 6 {
+		t.Fatalf("regressing refresh exited %d: %s", code, stderr.String())
+	}
+	var confirmation map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &confirmation); err != nil {
+		t.Fatal(err)
+	}
+	candidateSnapshot, ok := confirmation["candidate_snapshot"].(map[string]any)
+	candidateDigest, digestOK := candidateSnapshot["snapshot_digest"].(string)
+	if confirmation["status"] != "confirmation_required" || !ok || !digestOK || candidateDigest == "" {
+		t.Fatalf("refresh omitted candidate confirmation result: %#v", confirmation)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := NewCLI(&stdout, &stderr).Run([]string{
+		"refresh", "remote", "--registry", root, "--allow-regression", "--expected-candidate-digest", candidateDigest, "--json",
+	}); code != 0 {
+		t.Fatalf("confirmed refresh exited %d: %s", code, stderr.String())
+	}
+
 	stdout.Reset()
 	stderr.Reset()
 	if code := NewCLI(&stdout, &stderr).Run([]string{"refresh", "unknown", "--registry", root, "--json"}); code != 2 {
@@ -166,10 +189,15 @@ func TestRefreshCLIReportsFailureResultAndExitCodes(t *testing.T) {
 
 func cliRegistryZIP(t *testing.T) []byte {
 	t.Helper()
+	return cliRegistryZIPWithManifest(t, "api_version: locus/v1\nscope_id: scope.remote\n")
+}
+
+func cliRegistryZIPWithManifest(t *testing.T, manifest string) []byte {
+	t.Helper()
 	var payload bytes.Buffer
 	writer := zip.NewWriter(&payload)
 	files := map[string]string{
-		"scope.yaml":           "api_version: locus/v1\nscope_id: scope.remote\n",
+		"scope.yaml":           manifest,
 		"entities/remote.yaml": "api_version: locus/v1\ntype: entity\nid: remote\nkind: service\nname: Remote\n",
 	}
 	for _, name := range []string{"scope.yaml", "entities/remote.yaml"} {

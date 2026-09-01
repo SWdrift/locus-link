@@ -1,0 +1,5 @@
+api_version: locus/v1
+type: entity
+id: service.beta-sandbox
+kind: service
+name: Beta 构建沙箱

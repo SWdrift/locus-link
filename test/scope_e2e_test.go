@@ -96,7 +96,45 @@ func TestScopeGraphEndToEnd(t *testing.T) {
 		t.Fatalf("registered project missing: %#v", projects)
 	}
 
+	testMultipleLocalLoci(t, root, caseRoot, locusExe)
 	testRemoteScopeGraph(t, repository, root, caseRoot, locusExe, sourceHelper)
+}
+
+func testMultipleLocalLoci(t *testing.T, root, caseRoot, locusExe string) {
+	t.Helper()
+	fixtureRoot := filepath.Join(root, "multi-locus")
+	materializeFixture(t, filepath.Join(caseRoot, "multi-locus"), fixtureRoot, nil)
+	outside := filepath.Join(fixtureRoot, "outside")
+	mustMkdir(t, outside)
+
+	locusAEnv := append(os.Environ(),
+		"LOCUS_HOME="+filepath.Join(fixtureRoot, "locus-a"),
+		"LOCUS_STATE_PATH="+filepath.Join(root, "state", "local-locus-a.db"),
+	)
+	locusBEnv := append(os.Environ(),
+		"LOCUS_HOME="+filepath.Join(fixtureRoot, "locus-b"),
+		"LOCUS_STATE_PATH="+filepath.Join(root, "state", "local-locus-b.db"),
+	)
+
+	locusAGraph := runCLI(t, locusExe, outside, locusAEnv, "graph", "--json")
+	assertStringAt(t, locusAGraph, "completeness", "complete")
+	assertGraphEntities(t, locusAGraph,
+		"local.locus-a::local-service-a",
+		"local.locus-b::local-service-b",
+	)
+	if scopes, ok := locusAGraph["scopes"].([]any); !ok || len(scopes) != 2 {
+		t.Fatalf("local Locus dependency closure = %#v, want two Scopes", locusAGraph["scopes"])
+	}
+
+	locusBGraph := runCLI(t, locusExe, outside, locusBEnv, "graph", "--json")
+	assertStringAt(t, locusBGraph, "completeness", "complete")
+	assertGraphEntities(t, locusBGraph, "local.locus-b::local-service-b")
+	if graphHasEntity(locusBGraph, "local.locus-a::local-service-a") {
+		t.Fatalf("independent local Locus inherited another Locus without an import: %#v", locusBGraph)
+	}
+	if scopes, ok := locusBGraph["scopes"].([]any); !ok || len(scopes) != 1 {
+		t.Fatalf("independent local Locus graph = %#v, want one Scope", locusBGraph["scopes"])
+	}
 }
 
 func testRemoteScopeGraph(t *testing.T, repository, root, caseRoot, locusExe, sourceHelper string) {
@@ -104,8 +142,9 @@ func testRemoteScopeGraph(t *testing.T, repository, root, caseRoot, locusExe, so
 	remoteRoot := filepath.Join(root, "remote")
 	materializeFixture(t, filepath.Join(caseRoot, "remote"), remoteRoot, nil)
 	urlSource := filepath.Join(remoteRoot, "url-source")
-	var payload atomic.Value
-	payload.Store(zipRegistryDirectory(t, urlSource))
+	childURLSource := filepath.Join(remoteRoot, "url-child-source")
+	var urlPayload atomic.Value
+	var childURLPayload atomic.Value
 	var requests atomic.Int64
 	var failActive atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -115,7 +154,14 @@ func testRemoteScopeGraph(t *testing.T, repository, root, caseRoot, locusExe, so
 			return
 		}
 		response.Header().Set("Content-Type", "application/zip")
-		_, _ = response.Write(payload.Load().([]byte))
+		switch request.URL.Path {
+		case "/registry.zip":
+			_, _ = response.Write(urlPayload.Load().([]byte))
+		case "/child.zip":
+			_, _ = response.Write(childURLPayload.Load().([]byte))
+		default:
+			http.NotFound(response, request)
+		}
 	}))
 	defer server.Close()
 	gitSource := filepath.Join(remoteRoot, "git-source")
@@ -124,6 +170,9 @@ func testRemoteScopeGraph(t *testing.T, repository, root, caseRoot, locusExe, so
 	replaceFileTokens(t, filepath.Join(remoteRegistry, "scope.yaml"), map[string]string{
 		"{{GIT_URI}}": fileURLForE2E(gitSource), "{{URL_URI}}": server.URL + "/registry.zip",
 	})
+	replaceFileTokens(t, filepath.Join(urlSource, "scope.yaml"), map[string]string{"{{CHILD_URL}}": server.URL + "/child.zip"})
+	urlPayload.Store(zipRegistryDirectory(t, urlSource))
+	childURLPayload.Store(zipRegistryDirectory(t, childURLSource))
 	replaceFileTokens(t, filepath.Join(failureRegistry, "scope.yaml"), map[string]string{"{{FAIL_URL}}": server.URL + "/failure.zip"})
 	helperLog := filepath.Join(root, "sim", "source-helper.log")
 	remoteEnv := append(os.Environ(),
@@ -141,44 +190,44 @@ func testRemoteScopeGraph(t *testing.T, repository, root, caseRoot, locusExe, so
 	}
 	refreshed := runCLI(t, locusExe, repository, remoteEnv, "refresh", "--registry", remoteRegistry, "--json")
 	assertStringAt(t, refreshed, "status", "success")
-	if activated, ok := refreshed["activated"].([]any); !ok || len(activated) != 2 {
-		t.Fatalf("remote closure was not activated: %#v", refreshed)
+	if activated, ok := refreshed["activated"].([]any); !ok || len(activated) != 3 {
+		t.Fatalf("remote dependency closure was not activated: %#v", refreshed)
 	}
-	if requests.Load() != 1 || fileLineCount(t, helperLog) != 3 {
+	if requests.Load() != 2 || fileLineCount(t, helperLog) != 3 {
 		t.Fatalf("unexpected refresh fetch counts: HTTP=%d helper=%d", requests.Load(), fileLineCount(t, helperLog))
 	}
 	activeGraph := runCLI(t, locusExe, repository, remoteEnv, "graph", "--registry", remoteRegistry, "--json")
 	assertStringAt(t, activeGraph, "completeness", "complete")
-	assertGraphEntities(t, activeGraph, "remote.git::git-v1", "remote.url::url-v1")
+	assertGraphEntities(t, activeGraph, "remote.git::git-v1", "remote.url::url-v1", "remote.url-child::child-v1")
 	gitScope := findGraphScope(t, activeGraph, "remote.git")
 	assertStringAt(t, gitScope, "resolved_revision", strings.Repeat("1", 40))
-	if requests.Load() != 1 || fileLineCount(t, helperLog) != 3 {
+	if requests.Load() != 2 || fileLineCount(t, helperLog) != 3 {
 		t.Fatal("normal graph re-fetched active remote Sources")
 	}
 
 	mustWrite(t, filepath.Join(gitSource, "entities", "git-v2.yaml"), "api_version: locus/v1\ntype: entity\nid: git-v2\nkind: service\nname: Git V2\n")
 	mustWrite(t, gitSource+".commit", strings.Repeat("2", 40)+"\n")
 	mustWrite(t, filepath.Join(urlSource, "entities", "url-v2.yaml"), "api_version: locus/v1\ntype: entity\nid: url-v2\nkind: service\nname: URL V2\n")
-	payload.Store(zipRegistryDirectory(t, urlSource))
+	urlPayload.Store(zipRegistryDirectory(t, urlSource))
 	beforeRefresh := runCLI(t, locusExe, repository, remoteEnv, "graph", "--registry", remoteRegistry, "--json")
-	if graphHasEntity(beforeRefresh, "remote.git::git-v2") || graphHasEntity(beforeRefresh, "remote.url::url-v2") || requests.Load() != 1 || fileLineCount(t, helperLog) != 3 {
+	if graphHasEntity(beforeRefresh, "remote.git::git-v2") || graphHasEntity(beforeRefresh, "remote.url::url-v2") || requests.Load() != 2 || fileLineCount(t, helperLog) != 3 {
 		t.Fatalf("updated Sources became visible without refresh: %#v", beforeRefresh)
 	}
 	secondRefresh := runCLI(t, locusExe, repository, remoteEnv, "refresh", "--registry", remoteRegistry, "--json")
 	assertStringAt(t, secondRefresh, "status", "success")
 	updatedGraph := runCLI(t, locusExe, repository, remoteEnv, "graph", "--registry", remoteRegistry, "--json")
-	assertGraphEntities(t, updatedGraph, "remote.git::git-v2", "remote.url::url-v2")
+	assertGraphEntities(t, updatedGraph, "remote.git::git-v2", "remote.url::url-v2", "remote.url-child::child-v1")
 
 	mustWrite(t, gitSource+".commit", "invalid\n")
 	failActive.Store(true)
 	failedRefresh := runCLIExpectExitJSON(t, locusExe, repository, remoteEnv, 5, "refresh", "--registry", remoteRegistry, "--json")
 	assertStringAt(t, failedRefresh, "status", "partial")
-	if retained, ok := failedRefresh["retained"].([]any); !ok || len(retained) != 2 {
-		t.Fatalf("failed refresh did not retain both active objects: %#v", failedRefresh)
+	if retained, ok := failedRefresh["retained"].([]any); !ok || len(retained) != 3 {
+		t.Fatalf("failed refresh did not retain the remote dependency closure: %#v", failedRefresh)
 	}
 	retainedGraph := runCLI(t, locusExe, repository, remoteEnv, "graph", "--registry", remoteRegistry, "--json")
 	assertStringAt(t, retainedGraph, "completeness", "complete")
-	assertGraphEntities(t, retainedGraph, "remote.git::git-v2", "remote.url::url-v2")
+	assertGraphEntities(t, retainedGraph, "remote.git::git-v2", "remote.url::url-v2", "remote.url-child::child-v1")
 	firstFailure := runCLIExpectExitJSON(t, locusExe, repository, remoteEnv, 5, "refresh", "unavailable", "--registry", failureRegistry, "--json")
 	assertStringAt(t, firstFailure, "status", "failure")
 	failureGraph := runCLI(t, locusExe, repository, remoteEnv, "graph", "--registry", failureRegistry, "--json")

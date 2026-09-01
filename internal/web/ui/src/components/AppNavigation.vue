@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { DataAnalysis, Document, Expand, Fold, Search, Share } from '@element-plus/icons-vue'
+import { Collection, Connection, DataAnalysis, Document, Expand, Fold, Search, Share } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
+import { scopePath } from '../scope-context'
 
 defineProps<{ collapsed: boolean }>()
 const emit = defineEmits<{ toggle: [] }>()
 
 const route = useRoute()
 const { t } = useI18n()
+const scopeID = computed(() => (typeof route.params.scopeId === 'string' ? route.params.scopeId : ''))
+const activePath = computed(() => route.path)
 </script>
 
 <template>
@@ -15,23 +18,60 @@ const { t } = useI18n()
       <strong class="locus-navigation__product">{{ t('app.name') }}</strong>
     </header>
 
-    <ElMenu class="locus-navigation__menu" :collapse="collapsed" :default-active="route.path" router>
-      <ElMenuItem class="locus-navigation__item" index="/graph" :title="collapsed ? t('nav.graph') : undefined">
-        <ElIcon><Share /></ElIcon>
-        <span class="locus-navigation__label">{{ t('nav.graph') }}</span>
+    <ElMenu class="locus-navigation__menu" :collapse="collapsed" :default-active="activePath" router>
+      <ElMenuItem
+        class="locus-navigation__item"
+        index="/locus/catalog"
+        :title="collapsed ? t('locus.catalog') : undefined"
+      >
+        <ElIcon><Collection /></ElIcon>
+        <span class="locus-navigation__label">{{ t('locus.catalog') }}</span>
       </ElMenuItem>
-      <ElMenuItem class="locus-navigation__item" index="/status" :title="collapsed ? t('nav.status') : undefined">
-        <ElIcon><DataAnalysis /></ElIcon>
-        <span class="locus-navigation__label">{{ t('nav.status') }}</span>
+      <ElMenuItem
+        class="locus-navigation__item"
+        index="/locus/dependencies"
+        :title="collapsed ? t('locus.dependencies') : undefined"
+      >
+        <ElIcon><Connection /></ElIcon>
+        <span class="locus-navigation__label">{{ t('locus.dependencies') }}</span>
       </ElMenuItem>
-      <ElMenuItem class="locus-navigation__item" index="/knowledge" :title="collapsed ? t('nav.knowledge') : undefined">
-        <ElIcon><Document /></ElIcon>
-        <span class="locus-navigation__label">{{ t('nav.knowledge') }}</span>
-      </ElMenuItem>
-      <ElMenuItem class="locus-navigation__item" index="/inspect" :title="collapsed ? t('nav.inspect') : undefined">
-        <ElIcon><Search /></ElIcon>
-        <span class="locus-navigation__label">{{ t('nav.inspect') }}</span>
-      </ElMenuItem>
+      <template v-if="scopeID">
+        <li class="locus-navigation__scope-label" :title="scopeID">
+          <span v-if="!collapsed">{{ scopeID }}</span>
+        </li>
+        <ElMenuItem
+          class="locus-navigation__item"
+          :index="scopePath(scopeID, 'graph')"
+          :title="collapsed ? t('nav.graph') : undefined"
+        >
+          <ElIcon><Share /></ElIcon>
+          <span class="locus-navigation__label">{{ t('nav.graph') }}</span>
+        </ElMenuItem>
+        <ElMenuItem
+          class="locus-navigation__item"
+          :index="scopePath(scopeID, 'status')"
+          :title="collapsed ? t('nav.status') : undefined"
+        >
+          <ElIcon><DataAnalysis /></ElIcon>
+          <span class="locus-navigation__label">{{ t('nav.status') }}</span>
+        </ElMenuItem>
+        <ElMenuItem
+          class="locus-navigation__item"
+          :index="scopePath(scopeID, 'knowledge')"
+          :title="collapsed ? t('nav.knowledge') : undefined"
+        >
+          <ElIcon><Document /></ElIcon>
+          <span class="locus-navigation__label">{{ t('nav.knowledge') }}</span>
+        </ElMenuItem>
+        <ElMenuItem
+          class="locus-navigation__item"
+          :index="scopePath(scopeID, 'inspect')"
+          :title="collapsed ? t('nav.inspect') : undefined"
+        >
+          <ElIcon><Search /></ElIcon>
+          <span class="locus-navigation__label">{{ t('nav.inspect') }}</span>
+        </ElMenuItem>
+      </template>
     </ElMenu>
     <footer class="locus-navigation__footer">
       <button
@@ -73,15 +113,16 @@ const { t } = useI18n()
 .locus-navigation__footer {
   min-height: var(--locus-touch-target);
   display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: center;
   margin-top: auto;
   padding-top: var(--locus-space-4);
   border-top: 1px solid var(--border-subtle);
 }
 
 .locus-navigation__toggle {
-  width: calc(var(--locus-control-height) - var(--locus-space-2));
+  /* width: calc(var(--locus-control-height) - var(--locus-space-2)); */
+  width: 100%;
   height: calc(var(--locus-control-height) - var(--locus-space-2));
   display: inline-grid;
   flex: 0 0 auto;
@@ -117,6 +158,18 @@ const { t } = useI18n()
   border: 0;
 }
 
+.locus-navigation__scope-label {
+  min-width: 0;
+  margin: var(--locus-space-4) var(--locus-space-5) var(--locus-space-2);
+  padding-top: var(--locus-space-4);
+  overflow: hidden;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: var(--locus-font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .locus-navigation__item {
   height: var(--locus-navigation-item-height);
   margin-bottom: var(--locus-space-1);
@@ -145,6 +198,12 @@ const { t } = useI18n()
 
 .locus-navigation--collapsed .locus-navigation__menu {
   width: 100%;
+}
+
+.locus-navigation--collapsed .locus-navigation__scope-label {
+  height: 1px;
+  margin: var(--locus-space-3) 0;
+  padding: 0;
 }
 
 .locus-navigation--collapsed .locus-navigation__item {

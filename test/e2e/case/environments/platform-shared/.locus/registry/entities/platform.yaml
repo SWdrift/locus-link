@@ -1,0 +1,5 @@
+api_version: locus/v1
+type: entity
+id: service.shared
+kind: service
+name: 共享平台服务

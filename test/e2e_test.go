@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -51,10 +52,13 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	defer listener.Close()
 	materializeFixture(t, filepath.Join(caseRoot, "environments"), filepath.Join(root, "environments"), nil)
 	materializeFixture(t, filepath.Join(caseRoot, "devices"), filepath.Join(root, "devices"), nil)
+	materializeFixture(t, filepath.Join(caseRoot, "user"), filepath.Join(root, "home"), nil)
+	remoteURL := startRetainedRemoteSources(t, caseRoot, root)
 
 	projectA := filepath.Join(root, "projects", "alpha")
 	projectARegistry := filepath.Join(projectA, ".locus", "registry")
-	materializeProject(t, caseRoot, projectA, "project.alpha", "workstation.dev-a", port)
+	materializeProject(t, filepath.Join(caseRoot, "project"), projectA, "project.alpha", "workstation.dev-a", port)
+	replaceFileTokens(t, filepath.Join(projectARegistry, "scope.yaml"), map[string]string{"{{REMOTE_URL}}": remoteURL})
 	mechanismRoot := filepath.Join(root, "mechanisms")
 	materializeFixture(t, filepath.Join(caseRoot, "mechanisms"), mechanismRoot, map[string]string{
 		"{{FRPC_EXECUTABLE_A}}": filepath.ToSlash(frpcA),
@@ -84,7 +88,17 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 
 	initResult := runCLI(t, locusExe, projectB, env, "init", "--scope-id", "project.beta", "--registry", projectBRegistry, "--json")
 	assertStringAt(t, initResult, "scope_id", "project.beta")
-	materializeProject(t, caseRoot, projectB, "project.beta", "workstation.dev-b", port)
+	materializeProject(t, filepath.Join(caseRoot, "project-beta"), projectB, "project.beta", "workstation.dev-b", port)
+	alphaRefresh := runCLI(t, locusExe, projectA, env, "refresh", "--json")
+	assertStringAt(t, alphaRefresh, "status", "success")
+	betaRefresh := runCLI(t, locusExe, projectB, env, "refresh", "--json")
+	assertStringAt(t, betaRefresh, "status", "success")
+	runCLI(t, locusExe, projectA, env, "project", "register", "--registry", projectARegistry, "--json")
+	runCLI(t, locusExe, projectB, env, "project", "register", "--registry", projectBRegistry, "--json")
+	registeredProjects := runCLI(t, locusExe, projectA, env, "project", "list", "--json")
+	if projects, ok := registeredProjects["projects"].([]any); !ok || len(projects) != 2 {
+		t.Fatalf("retained E2E state must register both local projects: %#v", registeredProjects)
+	}
 
 	runtimeArgs := []string{"--from", "workstation.dev-a", "--vantage", "office-lan", "--mechanism-bindings", bindingAPath, "--json"}
 	validate := runCLI(t, locusExe, projectA, env, "validate", "--json")
@@ -109,6 +123,9 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 		assertArrayContains(t, runtimeContext["available_tools"], tool)
 	}
 	assertImport(t, contextResult["imports"], "customer", "environment.customer-a")
+	assertImport(t, contextResult["imports"], "platform", "platform.shared")
+	assertImport(t, contextResult["imports"], "remote-demo", "remote.url")
+	assertImport(t, contextResult["imports"], "child", "remote.url-child")
 
 	list := runCLI(t, locusExe, nested, env, "list", "route", "--json")
 	assertArrayContains(t, list["objects"], "project.alpha::route.prod-shell")
@@ -246,6 +263,7 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	bindingEnv := append(os.Environ(),
 		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"LOCUS_STATE_PATH="+bindingStatePath,
+		"LOCUS_HOME="+filepath.Join(root, "home"),
 		"LOCUS_SIM_ROOT="+deviceA,
 	)
 	bindingResolveArgs := func(path string) []string {
@@ -255,6 +273,8 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 			"--mechanism-bindings", path, "--json",
 		}
 	}
+	isolatedRefresh := runCLI(t, locusExe, projectA, bindingEnv, "refresh", "--json")
+	assertStringAt(t, isolatedRefresh, "status", "success")
 	workstationA := runCLI(t, locusExe, projectA, bindingEnv, bindingResolveArgs(bindingAPath)...)
 	workstationB := runCLI(t, locusExe, projectA, bindingEnv, bindingResolveArgs(bindingBPath)...)
 	for _, result := range []map[string]any{workstationA, workstationB} {
@@ -296,12 +316,54 @@ func assertWebEndToEnd(t *testing.T, executable, project string, env []string, d
 	webContext, _ := webJSON(t, webClient, http.MethodGet, webBase+"/api/v0/context", "", http.StatusOK)
 	assertStringAt(t, webContext, "active_scope", "id", "project.alpha")
 	assertStringAt(t, webContext, "runtime", "current_entity", "project.alpha::workstation.dev-a")
+	catalog, _ := webJSON(t, webClient, http.MethodGet, webBase+"/api/v0/locus/scopes", "", http.StatusOK)
+	scopes, ok := catalog["scopes"].([]any)
+	if !ok || len(scopes) != 3 {
+		t.Fatalf("unexpected retained Locus catalog: %#v", catalog)
+	}
+	for index, scopeID := range []string{"user.local-e2e", "project.alpha", "project.beta"} {
+		scope, ok := scopes[index].(map[string]any)
+		if !ok || scope["scope_id"] != scopeID || scope["availability"] != "available" || scope["openable"] != true {
+			t.Fatalf("unexpected retained Locus catalog entry %d: %#v", index, scopes[index])
+		}
+	}
+	if scopes[1].(map[string]any)["active"] != true {
+		t.Fatalf("active project missing from retained Locus catalog: %#v", catalog)
+	}
+	dependencies, _ := webJSON(
+		t, webClient, http.MethodGet, webBase+"/api/v0/locus/dependencies?root=project.alpha", "", http.StatusOK,
+	)
+	dependencyNodes, nodesOK := dependencies["nodes"].([]any)
+	dependencyEdges, edgesOK := dependencies["edges"].([]any)
+	if !nodesOK || !edgesOK || len(dependencyNodes) != 5 || len(dependencyEdges) != 4 {
+		t.Fatalf("retained Web dependency graph must expose the complete local and remote closure: %#v", dependencies)
+	}
+	dependencyScopeIDs := map[string]bool{}
+	for _, value := range dependencyNodes {
+		node, _ := value.(map[string]any)
+		dependencyScopeIDs[node["scope_id"].(string)] = true
+	}
+	for _, scopeID := range []string{
+		"project.alpha", "environment.customer-a", "platform.shared", "remote.url", "remote.url-child",
+	} {
+		if !dependencyScopeIDs[scopeID] {
+			t.Fatalf("dependency Scope %q missing from retained Web graph: %#v", scopeID, dependencies)
+		}
+	}
+	betaDependencies, _ := webJSON(
+		t, webClient, http.MethodGet, webBase+"/api/v0/locus/dependencies?root=project.beta", "", http.StatusOK,
+	)
+	betaDependencyNodes, betaNodesOK := betaDependencies["nodes"].([]any)
+	betaDependencyEdges, betaEdgesOK := betaDependencies["edges"].([]any)
+	if !betaNodesOK || !betaEdgesOK || len(betaDependencyNodes) != 3 || len(betaDependencyEdges) != 2 {
+		t.Fatalf("Beta dependency graph must remain a smaller local-only closure: %#v", betaDependencies)
+	}
 
 	webGraph, graphBody := webJSON(t, webClient, http.MethodGet, webBase+"/api/v0/graph", "", http.StatusOK)
 	if strings.Contains(string(graphBody), "credential_ref") || strings.Contains(string(graphBody), "secret://") || strings.Contains(string(graphBody), "provider_data") {
 		t.Fatalf("graph leaked provider or secret data: %s", graphBody)
 	}
-	if entities, ok := webGraph["entities"].([]any); !ok || len(entities) != 9 {
+	if entities, ok := webGraph["entities"].([]any); !ok || len(entities) != 12 {
 		t.Fatalf("unexpected Web graph entities: %#v", webGraph)
 	}
 	if links, ok := webGraph["links"].([]any); !ok || len(links) != 9 {
@@ -309,6 +371,25 @@ func assertWebEndToEnd(t *testing.T, executable, project string, env []string, d
 	}
 	if routes, ok := webGraph["routes"].([]any); !ok || len(routes) != 7 {
 		t.Fatalf("unexpected Web graph routes: %#v", webGraph)
+	}
+	betaGraph, betaGraphBody := webJSON(
+		t, webClient, http.MethodGet, webBase+"/api/v0/graph?scope=project.beta", "", http.StatusOK,
+	)
+	if entities, ok := betaGraph["entities"].([]any); !ok || len(entities) != 11 {
+		t.Fatalf("unexpected Beta Web graph entities: %#v", betaGraph)
+	}
+	if bindings, ok := betaGraph["bindings"].([]any); !ok || len(bindings) != 2 {
+		t.Fatalf("unexpected Beta Web graph bindings: %#v", betaGraph)
+	}
+	if links, ok := betaGraph["links"].([]any); !ok || len(links) != 3 {
+		t.Fatalf("unexpected Beta Web graph links: %#v", betaGraph)
+	}
+	if routes, ok := betaGraph["routes"].([]any); !ok || len(routes) != 2 {
+		t.Fatalf("unexpected Beta Web graph routes: %#v", betaGraph)
+	}
+	if !strings.Contains(string(betaGraphBody), "project.beta::service.beta-sandbox") ||
+		strings.Contains(string(betaGraphBody), "remote.url") {
+		t.Fatalf("Beta graph must contain its sandbox and exclude Alpha remote entities: %s", betaGraphBody)
 	}
 
 	knowledge, _ := webJSON(t, webClient, http.MethodGet, webBase+"/api/v0/knowledge", "", http.StatusOK)
@@ -532,10 +613,40 @@ func startEndpoint(t *testing.T) (net.Listener, int) {
 	return listener, listener.Addr().(*net.TCPAddr).Port
 }
 
-func materializeProject(t *testing.T, caseRoot, target, projectID, workstation string, port int) {
+func startRetainedRemoteSources(t *testing.T, caseRoot, root string) string {
+	t.Helper()
+	remoteRoot := filepath.Join(root, "remote-sources")
+	urlSource := filepath.Join(remoteRoot, "url")
+	childSource := filepath.Join(remoteRoot, "child")
+	materializeFixture(t, filepath.Join(caseRoot, "scope-graph", "remote", "url-source"), urlSource, nil)
+	materializeFixture(t, filepath.Join(caseRoot, "scope-graph", "remote", "url-child-source"), childSource, nil)
+
+	var urlPayload []byte
+	var childPayload []byte
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/zip")
+		switch request.URL.Path {
+		case "/registry.zip":
+			_, _ = response.Write(urlPayload)
+		case "/child.zip":
+			_, _ = response.Write(childPayload)
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	t.Cleanup(server.Close)
+	replaceFileTokens(t, filepath.Join(urlSource, "scope.yaml"), map[string]string{
+		"{{CHILD_URL}}": server.URL + "/child.zip",
+	})
+	urlPayload = zipRegistryDirectory(t, urlSource)
+	childPayload = zipRegistryDirectory(t, childSource)
+	return server.URL + "/registry.zip"
+}
+
+func materializeProject(t *testing.T, fixture, target, projectID, workstation string, port int) {
 	t.Helper()
 	registry := filepath.Join(target, ".locus", "registry")
-	materializeFixture(t, filepath.Join(caseRoot, "project"), target, map[string]string{
+	materializeFixture(t, fixture, target, map[string]string{
 		"{{PROJECT_ID}}":  projectID,
 		"{{WORKSTATION}}": workstation,
 		"{{PORT}}":        strconv.Itoa(port),
@@ -702,13 +813,16 @@ func mustObjectAt(t *testing.T, value map[string]any, key string) map[string]any
 func assertImport(t *testing.T, value any, alias, scopeID string) {
 	t.Helper()
 	imports, ok := value.([]any)
-	if !ok || len(imports) != 1 {
-		t.Fatalf("expected one import, got %#v", value)
+	if !ok {
+		t.Fatalf("expected imports array, got %#v", value)
 	}
-	item, ok := imports[0].(map[string]any)
-	if !ok || item["alias"] != alias || item["target_scope_id"] != scopeID {
-		t.Fatalf("expected import %s -> %s, got %#v", alias, scopeID, value)
+	for _, candidate := range imports {
+		item, itemOK := candidate.(map[string]any)
+		if itemOK && item["alias"] == alias && item["target_scope_id"] == scopeID {
+			return
+		}
 	}
+	t.Fatalf("expected import %s -> %s, got %#v", alias, scopeID, value)
 }
 
 func assertRouteSteps(t *testing.T, result map[string]any, expected ...string) {

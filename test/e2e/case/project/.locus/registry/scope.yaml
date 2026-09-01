@@ -2,6 +2,11 @@ api_version: locus/v1
 scope_id: {{PROJECT_ID}}
 imports:
   customer: ../../../../environments/customer-a/.locus/registry
+  remote-demo:
+    scope_id: remote.url
+    source:
+      kind: url
+      uri: {{REMOTE_URL}}
 bindings:
   production-host: customer::host.prod-01
   edge-gateway: customer::gateway.edge

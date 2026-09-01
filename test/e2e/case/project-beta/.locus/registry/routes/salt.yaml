@@ -1,0 +1,5 @@
+api_version: locus/v1
+type: route
+id: route.prod-salt
+steps:
+  - link: link.prod-salt

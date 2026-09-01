@@ -42,6 +42,14 @@
 - Refresh 在隔离 candidate 中完成严格校验后，才通过单个 SQLite transaction 激活 edge entry 与 Scope authority；失败保留 last-known-good，首次失败只阻断对应 edge。
 - Source 修改后以显式 refresh 直接切换 active authority，不实现独立 authority-switch。相同 `scope_id` 的不同内容无 active authority 时全部排除，不按遍历顺序选赢家。
 - PostgreSQL、Gitea、Profile、actor、MCP Adapter/Provider/Resource/runtime 和执行层保持冻结，不属于 Scope v1 后端落地的当前验收。
+- Locus Catalog 只投影用户根与已注册项目 Scope；条目只有在 Registry 可读且内生 `scope_id` 与登记值一致时才可打开。Remote/cache Scope 默认只参与依赖检查和详情投影。
+- Dependency Snapshot 是 CLI 与 Web 共享的递归依赖事实：包含稳定 root/content identity、所有可见节点、active/blocked edge、alias path、`completeness` 与 `blocked_imports`。快照 digest 排除采集时间和自身 digest，保证同一依赖事实可稳定比较。
+- Refresh 必须先在 overlay 中递归收集 candidate 子图并与 active snapshot 比较。新增 blocked/cycle/authority conflict 或 completeness 回退要求确认；确认请求绑定预演得到的 candidate snapshot digest，避免确认过期候选。
+- Candidate 激活在单个 SQLite transaction 内批量切换 source entries 与 Scope authority。相同 Scope 的多个 candidate edge 可以共享内容；不同 digest 不得按遍历顺序覆盖 authority。
+- Web 读取 API 通过显式 `scope` 查询动态装载可打开的 Scope；前端稳定路由为 `/locus/catalog`、`/locus/dependencies` 与 `/scopes/:scopeId/*`，不保留旧工作区路由兼容分支。
+- Web Dependency Graph 必须默认合并全部 openable Root 的完整 Dependency Snapshot；Root、搜索与问题筛选只派生子图，不得默认选中 active Project 或用深度裁剪代替总图。
+- Web Status 的 Link `provider` 来自声明，不依赖 Observation；`unknown`/“从未”只表示当前 applicability 没有匹配观测。没有 current Entity 的空 Scope 仍应完成查询并显示空状态。
+- Dependency refresh 的普通结果使用不参与文档流布局的浮层消息；只有需要审阅并确认回退的 candidate 使用模态 diff。
 
 ## Documentation Architecture
 
@@ -63,6 +71,7 @@
 
 - 可交付 executable 的组成、构建依赖与开发组合以[产物设计](documents/design/产物设计.md)为准；Cobra adapter 位于 `internal/cli/`，领域模型、Resolver、Provider 和 Store 位于 `internal/locus/`。
 - 本机 Web API 位于 `internal/web/`，通过 `locus web` 启动 loopback HTTP server，直接复用 Core 提供 Context、Graph、Status、Knowledge、Validate、Resolve 与 safe Probe。
+- Locus Web API 已提供 `/api/v0/locus/scopes`、`/api/v0/locus/dependencies` 与 `/api/v0/locus/refresh`；Context、Graph、Status、Knowledge、Validate、Resolve 和 Probe 可按 openable Scope 动态装载。
 - Graph 投影不暴露 Provider data；Knowledge 只读取声明引用且经符号链接解析后仍位于所属 Scope `docs/` 的文件，同路径多 association 去重；Markdown 禁用 HTML 并经 DOMPurify 净化。
 - Web 只接受 loopback listener 与本机 Host，拒绝 cross-site fetch；读取和 Resolve 不写状态，只有显式 Probe 追加 Link Observation。
 - Project 可以按本地路径 import Environment，alias 归一化到 `<scope-id>::<local-id>` canonical identity。
@@ -73,6 +82,7 @@
 - Provider Probe 在 dial 或进程启动前重复执行 Validate；FRP、SSH、Salt Observation 分别记录具体测量 kind，外部进程失败不保存原始输出。
 - Observation 的零 `expires_at` 表示没有显式期限；只有非零且已过期的记录才派生为 stale。
 - Observation 持久化 declaration/source/binding digest、Probe kind/version、vantage 与 relevant context fingerprint；Resolve、Status 和 Route evidence 统一使用完整 applicability query，旧 schema 行保留但因 provenance 为空而失效。
+- Graph 与 Dependency Graph 的布局尺寸必须同时写入 Vue Flow node model 和实际卡片盒模型；布局常量、wrapper 与 card 不得维护第二套几何。
 - `validate`、`list`、`show` 是 declaration-only 路径，不解析 PATH、runtime 或 Observation state。
 - `LOCUS_STATE_PATH` 可将测试 Store 定向到工作区；生产默认使用 OS 本机 state 目录。
 - `context`、`resolve`、`probe`、`status` 统一要求显式 `--from`，并通过同一个 builder 解析 vantage 与 workstation-local `--mechanism-bindings`；未传 vantage 时退化为 host-specific value。
@@ -82,12 +92,15 @@
 可审阅案例位于 `test/e2e/case/`：
 
 - 共享 `environment.customer-a`，包含 production host 与 FRP server。
-- Project 模板物化为 `project.alpha` 和 `project.beta`。
+- `project/` 与 `project-beta/` 是两套独立、可审阅的 Project Registry fixture；不能先物化 Alpha 定义再用 overlay 假装 Beta Declared View。
 - Binding `production-host` 指向 `environment.customer-a::host.prod-01`。
 - Alpha/Beta 使用不同 workstation canonical identity 和 vantage。
 - FRP→SSH Route 与 single-Link Salt Route 共用同一 Scope/Binding/Observation 机制。
 - 模拟设备状态为 `frp-up / ssh-up / salt-up`，helper executable 位于运行时 `temp/e2e-run/bin/`。
 - 两套 workstation-local FRP/SSH mechanism binding fixture 使用同一 Registry，concrete executable 不同但 canonical knowledge identity 不变。
+- `scope-graph/multi-locus/` 提供两个独立 `LOCUS_HOME` 与 SQLite Store；Locus A 通过 directory import 依赖 Locus B，Locus B 不反向继承 A。
+- `scope-graph/remote/` 的模拟 URL Scope 继续通过工作区内 loopback ZIP server 提供，并递归导入第二个 URL Scope，形成可审阅的 Remote→Remote closure。
+- Native Web fixture 中 Alpha 形成 Project→customer→platform 与 Project→URL→URL child 闭包，并声明 7 Binding/9 Link/7 Route；Beta 只保留 Project→customer→platform，声明 2 Binding/3 Link/2 Route，并增加专属 `service.beta-sandbox` Entity。
 
 完整 E2E 已验证：
 
@@ -101,8 +114,11 @@
 - Project Beta 在 `device-b` 下不会复用 Alpha/`office-lan` 的不适用 evidence，Resolve 保持 unknown。
 - 同一 Registry 的 binding A Probe success 不会被 binding B 复用；两边 Resolve 的 Entity、Binding、Route、capability 和 documentation 保持一致。
 - Observation 回归覆盖 declaration、binding、Probe version、vantage 变化导致失效，以及无关 CWD 变化不导致失效。
-- 同一 E2E 启动真实 `locus web` 子进程并复用 CLI fixture/Store，验证 Graph/Status/Knowledge/Resolve/Probe、failure/recovery、vantage 隔离、文档去重与 containment、Secret 边界及嵌入式 UI 入口。
+- 多本地 Locus E2E 验证独立用户根和 Store、本地 Locus 单向依赖闭包，以及未声明反向依赖时的隔离。
+- Remote E2E 验证普通 Graph 不联网、refresh 递归获取并原子激活三条 remote edge、后续读取只用 active cache，以及父子 Source 同时失败时完整保留三条 last-known-good edge。
+- 同一 E2E 启动真实 `locus web` 子进程并复用 CLI fixture/Store，验证 Graph/Status/Knowledge/Resolve/Probe、failure/recovery、vantage 隔离、文档去重与 containment、Secret 边界、空用户 Scope Status，以及 Alpha/Beta 在 Dependency Snapshot、Binding、Entity、Link 与 Route 上的差异化 Declared View。
 - 实际浏览器已验证 Graph、Status、Knowledge 三视图、Resolve、Probe、净化后的 Markdown 与窄屏无横向溢出；自动套件不依赖工作区外浏览器。
+- 实际浏览器已验证 Locus Catalog、Dependency 总图与筛选子图、多层 local/remote 节点、Graph/Dependency card 与 Vue Flow wrapper 几何一致、Inspect null-safe 集合渲染、空用户 Scope Status、声明 Provider 与 Observation 状态投影，以及 Refresh 浮层消息不改变 workspace 位置。
 
 运行：
 
@@ -110,15 +126,18 @@
 ./scripts/test-e2e.ps1
 ```
 
-运行后必须保留 `temp/e2e-run/`：其中包含两个物化 Project、Environment、设备状态、helper、`locus.exe` 和 SQLite，供人工复现。
+运行后必须保留 `temp/e2e-run/`：其中包含用户根 Registry、两个已注册 Project、Environment、设备状态、helper、`locus.exe` 和 SQLite，供人工复现。
 
 ## Operational Lessons
 
 - Go cache 和 module cache 必须放在 `temp/.go-cache`、`temp/.go-mod-cache`、`temp/.go-path`。非隐藏 `temp/go-mod-cache` 会被 `go test ./...` 当作 module 子树扫描并失败。
 - Go module cache 文件可能是只读；若确需删除，应先用对应 `GOMODCACHE` 执行 `go clean -modcache`。当前规则是保留测试产物和缓存，不主动清理。
 - E2E 的 FRP/SSH TCP listener 只在测试进程期间存活。测试完成后手动 `probe route.prod-shell` 失败是正确结果；重跑 `scripts/test-e2e.ps1` 才能复现完整成功闭环。
+- Native fixture 的 URL remote loopback server 也只在 E2E 进程期间存活；测试后普通 Dependency 读取继续使用 retained active cache，手动 Refresh 返回 partial 并保留 last-known-good 是正确结果。
 - Salt helper 不依赖 listener，可在保留的 `temp/e2e-run/` 中手动切换 `salt-up/salt-down` 观察 failure/recovery。
 - E2E source fixture 应保持可审阅并提交；动态端口、绝对 FRP config path、Project ID 和 workstation 只在物化时替换。
+- Web 调试脚本必须把 `temp/e2e-run/native/home` 显式设为 `LOCUS_HOME`，并复用 E2E 写入的项目注册状态；只设置项目 cwd 与 Store 会让 Locus Catalog 的用户根显示 `missing_path`。
+- Node 包管理器缓存沿用机器级配置；构建脚本不得传入仓库内 `store-dir`/`cache`。当前机器 `pnpm store path` 指向 `X:\Temp\.pnpm-store\v11`，仓库内 cache 既重复占用空间，也会留下指回项目的 pnpm project symlink。
 - 新 Provider 应自报 executable；`Providers.Available` 从 Provider registry 推导并排序，避免新增 Provider 时维护重复列表。
 - Registry YAML 使用 `go.yaml.in/yaml/v4` 严格解析；对象文件先加载为单个 `yaml.Node`，再按 `type` 解码，避免重复文件读取。v4 rc.6 的 `WithSingleDocument` 对 `yaml.Node` 不会拒绝多文档流，必须通过 Loader 显式确认后续读取为 `io.EOF`。
 

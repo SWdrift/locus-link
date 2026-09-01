@@ -8,11 +8,22 @@ import FilterToolbar from '../components/FilterToolbar.vue'
 import PageHeader from '../components/PageHeader.vue'
 import type { BindingView, EntityView, LinkView, RouteView } from '../domain/locus'
 
+import { scopePath, useScopeID } from '../scope-context'
 const { t } = useI18n()
 const route = useRoute()
-const contextQuery = useQuery({ queryKey: ['context'], queryFn: getContext })
-const graphQuery = useQuery({ queryKey: ['graph'], queryFn: getGraph })
-const validationQuery = useQuery({ queryKey: ['validation'], queryFn: getValidation })
+const scopeID = useScopeID()
+const contextQuery = useQuery({
+  queryKey: computed(() => ['context', scopeID.value]),
+  queryFn: () => getContext(scopeID.value),
+})
+const graphQuery = useQuery({
+  queryKey: computed(() => ['graph', scopeID.value]),
+  queryFn: () => getGraph(scopeID.value),
+})
+const validationQuery = useQuery({
+  queryKey: computed(() => ['validation', scopeID.value]),
+  queryFn: () => getValidation(scopeID.value),
+})
 const tab = ref('context')
 const search = ref('')
 const declarationFilter = ref('all')
@@ -65,6 +76,9 @@ const filteredDeclarations = computed(() => {
   })
 })
 const blockedImports = computed(() => validationQuery.data.value?.blocked_imports ?? [])
+const formatList = (values: string[] | null | undefined, separator = ', ') => (values ?? []).join(separator) || '—'
+const formatAliasPaths = (paths: string[][] | null | undefined) =>
+  (paths ?? []).map(path => path.join('::') || 'root').join(', ') || '—'
 </script>
 
 <template>
@@ -112,7 +126,7 @@ const blockedImports = computed(() => validationQuery.data.value?.blocked_import
                   ><CopyValue :value="contextQuery.data.value.observation_store"
                 /></ElDescriptionsItem>
                 <ElDescriptionsItem :label="t('inspect.tools')"
-                  ><CopyValue :value="contextQuery.data.value.runtime.available_tools.join(', ')"
+                  ><CopyValue :value="formatList(contextQuery.data.value.runtime.available_tools)"
                 /></ElDescriptionsItem>
                 <ElDescriptionsItem :label="t('inspect.mechanismBindings')"
                   ><CopyValue :value="contextQuery.data.value.runtime.mechanism_bindings_source"
@@ -166,9 +180,7 @@ const blockedImports = computed(() => validationQuery.data.value?.blocked_import
                   ><template #default="{ row }"><CopyValue :value="row.content_digest" /></template
                 ></ElTableColumn>
                 <ElTableColumn :label="t('inspect.aliases')" min-width="180"
-                  ><template #default="{ row }">{{
-                    row.alias_paths.map((path: string[]) => path.join('::')).join(', ') || '—'
-                  }}</template></ElTableColumn
+                  ><template #default="{ row }">{{ formatAliasPaths(row.alias_paths) }}</template></ElTableColumn
                 >
               </ElTable>
               <ElTable :data="graphQuery.data.value?.import_edges ?? []" :empty-text="t('common.noData')">
@@ -208,7 +220,7 @@ const blockedImports = computed(() => validationQuery.data.value?.blocked_import
                         <RouterLink
                           v-for="id in row.documentation_ids"
                           :key="id"
-                          :to="{ path: '/knowledge', query: { document: id } }"
+                          :to="{ path: scopePath(scopeID, 'knowledge'), query: { document: id } }"
                         >
                           <ElButton link type="primary">{{ id }}</ElButton>
                         </RouterLink>
@@ -263,7 +275,7 @@ const blockedImports = computed(() => validationQuery.data.value?.blocked_import
                 <ElTable :data="blockedImports" size="small">
                   <ElTableColumn prop="source_scope_id" :label="t('diagnostics.sourceScope')" min-width="180" />
                   <ElTableColumn :label="t('diagnostics.aliasPath')" min-width="180">
-                    <template #default="{ row }"><CopyValue :value="row.alias_path.join('::')" /></template>
+                    <template #default="{ row }"><CopyValue :value="formatList(row.alias_path, '::')" /></template>
                   </ElTableColumn>
                   <ElTableColumn prop="reason" :label="t('details.error')" min-width="160" />
                 </ElTable>

@@ -14,6 +14,7 @@ type RouteEvidence struct {
 type LinkEvidence struct {
 	LinkID      string       `json:"link_id"`
 	Status      string       `json:"status"`
+	Provider    string       `json:"provider"`
 	Observation *Observation `json:"observation,omitempty"`
 }
 type ResolvedBinding struct {
@@ -153,6 +154,7 @@ func (r *Registry) resolveRoute(ctx context.Context, route *Route, target, capab
 			return ResolvedRoute{}, false, err
 		}
 		evidence := ClassifyLinkEvidence(link.CanonicalID, observation)
+		evidence.Provider = link.Provider
 		result.Steps = append(result.Steps, ResolvedStep{
 			LinkID:        link.CanonicalID,
 			Provider:      link.Provider,
@@ -220,7 +222,9 @@ func (r *Registry) LinkEvidence(ctx context.Context, linkID string, runtime Runt
 	if err != nil {
 		return LinkEvidence{}, err
 	}
-	return ClassifyLinkEvidence(linkID, observation), nil
+	evidence := ClassifyLinkEvidence(linkID, observation)
+	evidence.Provider = prepared.link.Provider
+	return evidence, nil
 }
 
 func (r *Registry) RouteEvidence(ctx context.Context, route *Route, runtime RuntimeContext, providers *Providers, store *Store) (RouteEvidence, error) {

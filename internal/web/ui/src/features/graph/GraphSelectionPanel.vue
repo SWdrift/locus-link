@@ -4,6 +4,7 @@ import type { EntityView, GraphView, LinkView, StatusView } from '../../domain/l
 import CopyValue from '../../components/CopyValue.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
 import type { GraphSelection } from './graph-types'
+import { scopePath, useScopeID } from '../../scope-context'
 
 const props = defineProps<{
   graph: GraphView
@@ -14,6 +15,7 @@ const props = defineProps<{
 const emit = defineEmits<{ probe: [subject: string] }>()
 const selection = defineModel<GraphSelection | null>({ required: true })
 const { t } = useI18n()
+const scopeID = useScopeID()
 
 const selectedEntity = computed<EntityView | undefined>(() => {
   if (selection.value?.kind !== 'entity') return undefined
@@ -44,7 +46,7 @@ const linkStatus = computed(() => new Map(props.status?.links.map(item => [item.
         <RouterLink
           v-for="id in selectedEntity.documentation_ids ?? []"
           :key="id"
-          :to="{ path: '/knowledge', query: { document: id } }"
+          :to="{ path: scopePath(scopeID, 'knowledge'), query: { document: id } }"
         >
           <ElButton link type="primary">{{ id }}</ElButton>
         </RouterLink>
@@ -82,7 +84,7 @@ const linkStatus = computed(() => new Map(props.status?.links.map(item => [item.
         <RouterLink
           v-for="id in selectedLink.documentation_ids ?? []"
           :key="id"
-          :to="{ path: '/knowledge', query: { document: id } }"
+          :to="{ path: scopePath(scopeID, 'knowledge'), query: { document: id } }"
         >
           <ElButton link type="primary">{{ id }}</ElButton>
         </RouterLink>

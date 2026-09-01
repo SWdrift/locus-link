@@ -2,6 +2,7 @@
 import { useI18n } from 'vue-i18n'
 import { useOperationalContext } from '../operational-context'
 import { usePreferences } from '../preferences'
+import { scopePath, useScopeID } from '../scope-context'
 
 const props = defineProps<{
   scopeName: string
@@ -11,8 +12,9 @@ const props = defineProps<{
 
 const { t } = useI18n()
 const context = useOperationalContext()
+const scopeID = useScopeID()
 const preferences = usePreferences()
-const serviceTagType = computed(() => {
+const declarationStatusTagType = computed(() => {
   if (props.connectionState === 'error') return 'danger'
   if (props.connectionState === 'partial') return 'warning'
   if (props.connectionState === 'loading') return 'info'
@@ -28,7 +30,7 @@ const serviceTagType = computed(() => {
     </div>
 
     <div class="locus-toolbar__controls">
-      <label class="locus-toolbar__field">
+      <label v-if="scopeID" class="locus-toolbar__field">
         <span>{{ t('context.currentEntity') }}</span>
         <ElInput
           v-model="context.from"
@@ -37,7 +39,7 @@ const serviceTagType = computed(() => {
           :aria-label="t('context.currentEntity')"
         />
       </label>
-      <label class="locus-toolbar__field">
+      <label v-if="scopeID" class="locus-toolbar__field">
         <span>{{ t('context.vantage') }}</span>
         <ElInput
           v-model="context.vantage"
@@ -71,10 +73,13 @@ const serviceTagType = computed(() => {
           <ElOption :label="t('settings.dark')" value="dark" />
         </ElSelect>
       </label>
-      <div class="locus-toolbar__field">
-        <span>{{ t('app.service') }}</span>
-        <RouterLink class="locus-toolbar__service-link" :to="{ path: '/inspect', query: { tab: 'validation' } }">
-          <ElTag class="locus-toolbar__service" size="small" :type="serviceTagType" effect="plain">
+      <div v-if="scopeID" class="locus-toolbar__field">
+        <span>{{ t('app.declarationStatus') }}</span>
+        <RouterLink
+          class="locus-toolbar__status-link"
+          :to="{ path: scopePath(scopeID, 'inspect'), query: { tab: 'validation' } }"
+        >
+          <ElTag class="locus-toolbar__status" size="small" :type="declarationStatusTagType" effect="plain">
             {{ connectionText }}
           </ElTag>
         </RouterLink>
@@ -139,12 +144,12 @@ const serviceTagType = computed(() => {
   width: 104px;
 }
 
-.locus-toolbar__service-link {
+.locus-toolbar__status-link {
   display: inline-flex;
   text-decoration: none;
 }
 
-.locus-toolbar__service {
+.locus-toolbar__status {
   height: var(--el-component-size-small);
 }
 
@@ -170,7 +175,7 @@ const serviceTagType = computed(() => {
   .locus-toolbar__control,
   .locus-toolbar__control--entity,
   .locus-toolbar__preference,
-  .locus-toolbar__service {
+  .locus-toolbar__status {
     width: 100%;
   }
 }
