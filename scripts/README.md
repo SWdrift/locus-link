@@ -14,10 +14,16 @@
 | `start-web-ui.ps1` | 仅启动 Vite 前端，代理本机 Web API。 |
 | `test-e2e.ps1` | 运行 workspace E2E，并保留 `temp/e2e-run/` fixture。 |
 | `verify.ps1` | 运行 Web UI 构建、Go 测试、E2E 和 Markdown 链接检查。 |
+| `build.sh` / `build-backend.sh` | Linux 完整产物与 backend 构建，输出无 `.exe` 后缀。 |
+| `build-web-ui.sh` | Linux Web UI 类型检查与 lockfile 构建。 |
+| `test-e2e.sh` | Linux workspace E2E。 |
+| `verify.sh` | Linux Web UI、Go、E2E 和 Markdown links 完整验证。 |
 
 `start-web.ps1` 与 `start-web-api.ps1` 使用 `test-e2e.ps1` 保留的 `temp/e2e-run/native/` 作为调试运行时，并显式设置其中的用户级 `LOCUS_HOME`、项目注册状态、Observation Store 与模拟设备。首次启动或 fixture 变更后先运行 `test-e2e.ps1`；`start-web-ui.ps1` 通过 `127.0.0.1:7070` 消费该 API。
 
 `internal/` 保存上述入口复用的实现脚本，不作为直接入口。
+
+Windows 使用 `.ps1` 入口并生成 `.exe`；Linux 使用同名 `.sh` 入口并生成 `locus`、`locus-backend`。两端共享 Go targets、`VERSION`、ldflags metadata、pnpm lockfile 与 `go test ./...` 验证边界，不维护平台特有产品逻辑。
 
 ## 部署
 
