@@ -13,7 +13,7 @@ locus-link 不执行 Route 本身。它不会建立 FRP tunnel、SSH session 或
 在包含 `.locus/registry` 的项目或其子目录中：
 
 ```text
-locus resolve production-host --capability shell --from workstation.dev-a --vantage office-lan
+locus resolve production-host shell --from workstation.dev-a --vantage office-lan
 ```
 
 `resolve` 查找符合目标、能力和当前现场的已声明 Route，并返回有序 Link、底层调用信息、文档引用和当前可用的探测证据。
@@ -22,7 +22,7 @@ locus resolve production-host --capability shell --from workstation.dev-a --vant
 
 ```text
 locus probe route.prod-shell --from workstation.dev-a --vantage office-lan
-locus resolve production-host --capability shell --from workstation.dev-a --vantage office-lan
+locus resolve production-host shell --from workstation.dev-a --vantage office-lan
 ```
 
 基本使用方式是：
@@ -75,7 +75,7 @@ locus validate
 
 | 命令                                         | 用途                                                |
 | -------------------------------------------- | --------------------------------------------------- |
-| `locus resolve <target> --capability <name>` | 查询匹配的显式 Route 和当前证据                     |
+| `locus resolve <target> <capability>`         | 查询匹配的显式 Route 和当前证据                     |
 | `locus probe <link-or-route-id>`             | 探测 Link 或 Route                                  |
 | `locus status [link-or-route-id]`            | 查看当前 evidence                                   |
 | `locus graph`                                | 查看当前收集到的 Scope 和声明图                     |
@@ -83,33 +83,29 @@ locus validate
 | `locus list [binding\|entity\|link\|route]`  | 列出声明                                            |
 | `locus context`                              | 查看当前 Registry、Scope、actor 和 vantage 等上下文 |
 | `locus refresh [alias-path]`                 | 显式获取并检查 remote Registry 更新                 |
-| `locus web`                                  | 启动本机 Web UI                                     |
+| `locus ui`                                   | 启动本机 Web UI                                     |
 
 完整 flags、JSON 输出、退出码和副作用见 [CLI 公共契约](documents/design/contracts/CLI契约.md)。
 
 ## Build
 
-开发环境需要 Go 1.26 或兼容版本。
+开发环境需要 Go 1.26、pnpm 11 和 Node.js 24。
 
-在 PowerShell 中构建带 Web UI 的 executable：
+Windows PowerShell：
 
 ```powershell
 ./scripts/build.ps1
-```
-
-产物位于：
-
-```text
-temp/bin/locus.exe
-```
-
-运行完整验证：
-
-```powershell
 ./scripts/verify.ps1
 ```
 
-其他开发脚本见 [`scripts/README.md`](scripts/README.md)。
+Linux：
+
+```bash
+./scripts/build.sh
+./scripts/verify.sh
+```
+
+完整产物分别为 `temp/bin/locus.exe`（Windows）和 `temp/bin/locus`（Linux）；backend 产物分别为 `locus-backend.exe` 和 `locus-backend`。其他开发脚本见 [`scripts/README.md`](scripts/README.md)。
 
 ## Documentation
 

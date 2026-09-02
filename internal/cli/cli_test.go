@@ -76,7 +76,7 @@ func TestUserAndProjectAuthoringCommands(t *testing.T) {
 	t.Setenv("LOCUS_HOME", filepath.Join(base, "home"))
 	t.Setenv("LOCUS_STATE_PATH", filepath.Join(base, "state", "state.db"))
 
-	runInternalCLI(t, "user", "init", "--scope-id", "scope.user", "--json")
+	runInternalCLI(t, "init", "--user", "--scope-id", "scope.user", "--json")
 	created := runInternalCLI(t, "init", "--scope-id", "scope.project", "--import-user", "user", "--register", "--json")
 	if created["scope_id"] != "scope.project" {
 		t.Fatalf("unexpected init result: %#v", created)
@@ -100,8 +100,52 @@ func TestUserAndProjectAuthoringCommands(t *testing.T) {
 		t.Fatalf("unexpected project list: %#v", projects)
 	}
 	var stdout, stderr bytes.Buffer
-	if code := NewCLI(&stdout, &stderr).Run([]string{"user", "init", "--scope-id", "scope.other", "--json"}); code != 2 {
-		t.Fatalf("user init overwrite exited %d: %s", code, stderr.String())
+	if code := NewCLI(&stdout, &stderr).Run([]string{"user", "init", "--scope-id", "scope.other", "--json"}); code != 2 || !strings.Contains(stderr.String(), "unknown command") {
+		t.Fatalf("legacy user init was not rejected: code=%d stderr=%s", code, stderr.String())
+	}
+}
+
+func TestCLI02CommandSurfaceAndInference(t *testing.T) {
+	base := workspaceTestPath(t, "cli-v02-surface")
+	if err := os.RemoveAll(base); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(base, "registry")
+	writeDeclarationTestRegistry(t, root)
+	t.Setenv("LOCUS_HOME", filepath.Join(base, "home"))
+	t.Setenv("LOCUS_STATE_PATH", filepath.Join(base, "state", "state.db"))
+
+	code, contextResult, stderr := runCLIResult(t, "context", "--registry", root, "--json")
+	if code != 0 || contextResult["active_scope"] != "project.test" {
+		t.Fatalf("context without --from failed: code=%d stderr=%s result=%#v", code, stderr, contextResult)
+	}
+	runtime := contextResult["runtime"].(map[string]any)
+	if runtime["current_entity"] != "" {
+		t.Fatalf("context guessed current entity: %#v", runtime)
+	}
+	code, statusResult, stderr := runCLIResult(t, "status", "--registry", root, "--json")
+	if code != 0 || statusResult["summary"] == nil {
+		t.Fatalf("status without --from failed: code=%d stderr=%s result=%#v", code, stderr, statusResult)
+	}
+	code, resolved, stderr := runCLIResult(t, "resolve", "server", "shell", "--registry", root, "--json")
+	if code != 0 {
+		t.Fatalf("resolve inference failed: code=%d stderr=%s", code, stderr)
+	}
+	route := resolved["route"].(map[string]any)
+	if route["from"] != "project.test::workstation" {
+		t.Fatalf("resolve omitted inferred origin: %#v", route)
+	}
+	code, _, stderr = runCLIResult(t, "resolve", "server", "--capability", "shell", "--registry", root, "--json")
+	if code != 2 || !strings.Contains(stderr, "unknown flag") {
+		t.Fatalf("legacy capability flag was accepted: code=%d stderr=%s", code, stderr)
+	}
+	code, _, stderr = runCLIResult(t, "web")
+	if code != 2 || !strings.Contains(stderr, "unknown command") {
+		t.Fatalf("legacy web command was accepted: code=%d stderr=%s", code, stderr)
+	}
+	var completionOut, completionErr bytes.Buffer
+	if code := NewCLI(&completionOut, &completionErr).Run([]string{"completion", "bash"}); code != 0 || !strings.Contains(completionOut.String(), "__start_locus") {
+		t.Fatalf("bash completion failed: code=%d stderr=%s", code, completionErr.String())
 	}
 }
 
@@ -267,7 +311,7 @@ func TestPartialCommandsExposeStableTopLevelDiagnostics(t *testing.T) {
 		t.Fatalf("partial graph omitted loaded entities: %#v", graph)
 	}
 
-	code, resolved, stderr := runCLIResult(t, "resolve", "server", "--capability", "shell", "--registry", root, "--from", "workstation", "--vantage", "test:vantage", "--json")
+	code, resolved, stderr := runCLIResult(t, "resolve", "server", "shell", "--registry", root, "--from", "workstation", "--vantage", "test:vantage", "--json")
 	if code != 3 {
 		t.Fatalf("partial resolve exited %d: %s", code, stderr)
 	}
@@ -278,7 +322,7 @@ func TestPartialCommandsExposeStableTopLevelDiagnostics(t *testing.T) {
 	if candidates, ok := resolved["candidates"].([]any); !ok || len(candidates) != 1 {
 		t.Fatalf("partial resolve omitted discovered candidate: %#v", resolved)
 	}
-	code, unresolved, stderr := runCLIResult(t, "resolve", "remote::missing", "--capability", "shell", "--registry", root, "--from", "workstation", "--vantage", "test:vantage", "--json")
+	code, unresolved, stderr := runCLIResult(t, "resolve", "remote::missing", "shell", "--registry", root, "--from", "workstation", "--vantage", "test:vantage", "--json")
 	if code != 3 {
 		t.Fatalf("partial unknown resolve exited %d: %s", code, stderr)
 	}
@@ -397,7 +441,7 @@ func runInternalCLI(t *testing.T, args ...string) map[string]any {
 
 func writeDeclarationTestRegistry(t *testing.T, root string) {
 	t.Helper()
-	for _, directory := range []string{"entities", "links"} {
+	for _, directory := range []string{"entities", "links", "routes"} {
 		if err := os.MkdirAll(filepath.Join(root, directory), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -407,6 +451,7 @@ func writeDeclarationTestRegistry(t *testing.T, root string) {
 		filepath.Join("entities", "workstation.yaml"): "api_version: locus/v1\ntype: entity\nid: workstation\nkind: workstation\nname: Workstation\n",
 		filepath.Join("entities", "server.yaml"):      "api_version: locus/v1\ntype: entity\nid: server\nkind: server\nname: Server\n",
 		filepath.Join("links", "connection.yaml"):     "api_version: locus/v1\ntype: link\nid: connection\nfrom: workstation\nto: server\nprovider: ssh\nprovides:\n  - shell\nprovider_data:\n  user: root\n  host: example.test\n  port: 22\n",
+		filepath.Join("routes", "shell.yaml"):         "api_version: locus/v1\ntype: route\nid: shell\nsteps:\n  - link: connection\n",
 	}
 	for name, contents := range files {
 		if err := os.WriteFile(filepath.Join(root, name), []byte(contents), 0o644); err != nil {

@@ -1,6 +1,6 @@
 package buildinfo
 
-const PreviousVersion = "0.0.0"
+const PreviousVersion = "0.1.0"
 
 var (
 	Version  = "dev"

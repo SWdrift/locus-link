@@ -150,7 +150,7 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	assertRouteSteps(t, shellRoute, "project.alpha::link.prod-frp", "project.alpha::link.prod-ssh")
 	assertNoRuntimeEvidence(t, shellRoute)
 
-	resolveArgs := append([]string{"resolve", "production-host", "--capability", "shell"}, runtimeArgs...)
+	resolveArgs := append([]string{"resolve", "production-host", "shell"}, runtimeArgs...)
 	before := runCLI(t, locusExe, projectA, env, resolveArgs...)
 	assertStringAt(t, before, "status", "resolved")
 	assertStringAt(t, before, "canonical_target", "environment.customer-a::host.prod-01")
@@ -208,7 +208,7 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	assertObservationCount(t, statePath, 3)
 	assertProbeInvocations(t, probeLog, filepath.Base(frpcA), filepath.Base(sshA), filepath.Base(sshA))
 
-	saltResolveArgs := append([]string{"resolve", "production-host", "--capability", "salt.ping"}, runtimeArgs...)
+	saltResolveArgs := append([]string{"resolve", "production-host", "salt.ping"}, runtimeArgs...)
 	saltBefore := runCLI(t, locusExe, projectA, env, saltResolveArgs...)
 	assertStringAt(t, saltBefore, "route", "evidence_status", "unknown")
 	assertProbeInvocations(t, probeLog, filepath.Base(frpcA), filepath.Base(sshA), filepath.Base(sshA))
@@ -252,7 +252,7 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	assertStringAt(t, betaContext, "active_scope", "project.beta")
 	assertStringAt(t, betaContext, "bindings", "project.beta::production-host", "target", "environment.customer-a::host.prod-01")
 	assertStringAt(t, betaContext, "runtime", "vantage", "device-b")
-	betaResolve := runCLI(t, locusExe, projectB, env, append([]string{"resolve", "production-host", "--capability", "shell"}, betaArgs...)...)
+	betaResolve := runCLI(t, locusExe, projectB, env, append([]string{"resolve", "production-host", "shell"}, betaArgs...)...)
 	assertStringAt(t, betaResolve, "canonical_target", "environment.customer-a::host.prod-01")
 	assertStringAt(t, betaResolve, "route", "evidence_status", "unknown")
 	betaStatus := runCLI(t, locusExe, projectB, env, append([]string{"status", "route.prod-shell"}, betaArgs...)...)
@@ -268,7 +268,7 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	)
 	bindingResolveArgs := func(path string) []string {
 		return []string{
-			"resolve", "production-host", "--capability", "shell",
+			"resolve", "production-host", "shell",
 			"--from", "workstation.dev-a", "--vantage", "dual-workstation",
 			"--mechanism-bindings", path, "--json",
 		}
@@ -297,7 +297,7 @@ func TestWorkspaceEndToEnd(t *testing.T) {
 	workstationBAfterProbe := runCLI(t, locusExe, projectA, bindingEnv, bindingResolveArgs(bindingBPath)...)
 	assertStringAt(t, workstationBAfterProbe, "route", "evidence_status", "unknown")
 
-	unresolved := runCLIExpectExitJSON(t, locusExe, projectA, env, 3, append([]string{"resolve", "production-host", "--capability", "missing.capability"}, runtimeArgs...)...)
+	unresolved := runCLIExpectExitJSON(t, locusExe, projectA, env, 3, append([]string{"resolve", "production-host", "missing.capability"}, runtimeArgs...)...)
 	assertStringAt(t, unresolved, "status", "unresolved")
 
 	duplicateRoute := filepath.Join(projectARegistry, "routes", "alternate-shell.yaml")
@@ -439,7 +439,7 @@ func assertWebEndToEnd(t *testing.T, executable, project string, env []string, d
 func startWeb(t *testing.T, executable, cwd string, env []string, mechanismBindingsPath string) (string, *http.Client) {
 	t.Helper()
 	command := exec.Command(
-		executable, "web", "--from", "workstation.dev-a", "--vantage", "office-lan",
+		executable, "ui", "--from", "workstation.dev-a", "--vantage", "office-lan",
 		"--mechanism-bindings", mechanismBindingsPath, "--address", "127.0.0.1:0",
 	)
 	command.Dir = cwd

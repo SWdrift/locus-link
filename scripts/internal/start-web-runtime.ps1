@@ -41,7 +41,7 @@ try {
     $env:PATH = "$(Join-Path $runRoot 'bin');$oldPath"
     Set-Location $project
 
-    & $Executable web --from workstation.dev-a --vantage office-lan --mechanism-bindings $binding --address 127.0.0.1:7070
+    & $Executable ui --from workstation.dev-a --vantage office-lan --mechanism-bindings $binding --address 127.0.0.1:7070
     $exitCode = $LASTEXITCODE
 }
 finally {

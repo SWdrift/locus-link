@@ -42,6 +42,7 @@ type ResolvedStep struct {
 
 type ResolvedRoute struct {
 	CanonicalID     string          `json:"canonical_id"`
+	From            string          `json:"from"`
 	DerivedTarget   string          `json:"derived_target"`
 	DerivedProvides []string        `json:"derived_provides"`
 	Documentation   []Documentation `json:"documentation,omitempty"`
@@ -49,17 +50,25 @@ type ResolvedRoute struct {
 	Steps           []ResolvedStep  `json:"steps"`
 }
 
+type ResolveExplanation struct {
+	TargetResolution string   `json:"target_resolution"`
+	CandidateRoutes  []string `json:"candidate_routes"`
+	Origins          []string `json:"origins"`
+	Completeness     string   `json:"completeness"`
+}
+
 type ResolveResult struct {
-	Status         string           `json:"status"`
-	InputTarget    string           `json:"input_target"`
-	Target         string           `json:"canonical_target,omitempty"`
-	TargetEntity   ResolvedEntity   `json:"target_entity,omitempty"`
-	Binding        *ResolvedBinding `json:"binding,omitempty"`
-	Capability     string           `json:"capability"`
-	Route          *ResolvedRoute   `json:"route,omitempty"`
-	Candidates     []ResolvedRoute  `json:"candidates"`
-	Completeness   Completeness     `json:"completeness"`
-	BlockedImports []BlockedImport  `json:"blocked_imports"`
+	Status         string              `json:"status"`
+	InputTarget    string              `json:"input_target"`
+	Target         string              `json:"canonical_target,omitempty"`
+	TargetEntity   ResolvedEntity      `json:"target_entity,omitempty"`
+	Binding        *ResolvedBinding    `json:"binding,omitempty"`
+	Capability     string              `json:"capability"`
+	Route          *ResolvedRoute      `json:"route,omitempty"`
+	Candidates     []ResolvedRoute     `json:"candidates"`
+	Completeness   Completeness        `json:"completeness"`
+	BlockedImports []BlockedImport     `json:"blocked_imports"`
+	Explanation    *ResolveExplanation `json:"explanation,omitempty"`
 }
 
 func (r *Registry) Resolve(ctx context.Context, targetRef, capability string, runtime RuntimeContext, providers *Providers, store *Store) (ResolveResult, error) {
@@ -130,22 +139,25 @@ func (r *Registry) resolveRoute(ctx context.Context, route *Route, target, capab
 		return ResolvedRoute{}, false, nil
 	}
 	first := r.Links[route.Steps[0].Link]
-	if first.From != runtime.CurrentEntity {
+	if runtime.CurrentEntity != "" && first.From != runtime.CurrentEntity {
 		return ResolvedRoute{}, false, nil
 	}
+	effectiveRuntime := runtime
+	effectiveRuntime.CurrentEntity = first.From
 	available := map[string]bool{}
 	result := ResolvedRoute{
 		CanonicalID:   route.CanonicalID,
+		From:          first.From,
 		DerivedTarget: last.To,
 		Documentation: append([]Documentation(nil), route.Documentation...),
 	}
 	for _, step := range route.Steps {
-		prepared, err := r.prepareLink(step.Link, runtime, providers)
+		prepared, err := r.prepareLink(step.Link, effectiveRuntime, providers)
 		if err != nil {
 			return ResolvedRoute{}, false, err
 		}
 		link, provider := prepared.link, prepared.provider
-		hint, err := provider.Render(link, runtime)
+		hint, err := provider.Render(link, effectiveRuntime)
 		if err != nil {
 			return ResolvedRoute{}, false, err
 		}
@@ -214,6 +226,9 @@ func aggregateEvidence(steps []ResolvedStep) string {
 }
 
 func (r *Registry) LinkEvidence(ctx context.Context, linkID string, runtime RuntimeContext, providers *Providers, store *Store) (LinkEvidence, error) {
+	if runtime.CurrentEntity == "" {
+		runtime.CurrentEntity = r.Links[linkID].From
+	}
 	prepared, err := r.prepareLink(linkID, runtime, providers)
 	if err != nil {
 		return LinkEvidence{}, err
@@ -228,6 +243,9 @@ func (r *Registry) LinkEvidence(ctx context.Context, linkID string, runtime Runt
 }
 
 func (r *Registry) RouteEvidence(ctx context.Context, route *Route, runtime RuntimeContext, providers *Providers, store *Store) (RouteEvidence, error) {
+	if runtime.CurrentEntity == "" && len(route.Steps) != 0 {
+		runtime.CurrentEntity = r.Links[route.Steps[0].Link].From
+	}
 	result := RouteEvidence{}
 	var steps []ResolvedStep
 	for _, step := range route.Steps {
