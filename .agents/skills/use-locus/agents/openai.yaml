@@ -1,4 +1,4 @@
 interface:
   display_name: "Use Locus"
-  short_description: "使用已安装的 locus 查询环境、Route 与 evidence。"
-  default_prompt: "使用 $use-locus 在当前环境中发现 Registry，并查询目标能力对应的已声明 Route。"
+  short_description: "发现、维护并使用当前环境中的 Locus 连接与能力声明。"
+  default_prompt: "使用 $use-locus 理解当前环境与用户意图，复用或补充已有 Entity、Link、Route 与 Binding，并解析目标能力后完成后续操作。"
