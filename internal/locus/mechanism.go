@@ -1,7 +1,6 @@
 package locus
 
 import (
-	"errors"
 	"fmt"
 	"path/filepath"
 )
@@ -27,12 +26,12 @@ func BuildRuntime(registry *Registry, input RuntimeInput) (RuntimeContext, error
 	if err != nil {
 		return RuntimeContext{}, err
 	}
-	if input.From == "" {
-		return RuntimeContext{}, errors.New("--from is required for this command")
-	}
-	currentEntity, err := registry.ResolveEntity(input.From)
-	if err != nil {
-		return RuntimeContext{}, err
+	currentEntity := ""
+	if input.From != "" {
+		currentEntity, err = registry.ResolveEntity(input.From)
+		if err != nil {
+			return RuntimeContext{}, err
+		}
 	}
 	bindings, source, err := loadMechanismBindings(registry, input.MechanismBindingsPath)
 	if err != nil {

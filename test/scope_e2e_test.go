@@ -69,7 +69,7 @@ func TestScopeGraphEndToEnd(t *testing.T) {
 	assertPartialGraph(t, runCLI(t, locusExe, nested, localEnv, "graph", "--json"))
 
 	resolved := runCLIExpectExitJSON(t, locusExe, project, localEnv, 3,
-		"resolve", "shared-host", "--capability", "shell", "--from", "workstation", "--vantage", "scope:e2e", "--json")
+		"resolve", "shared-host", "shell", "--from", "workstation", "--vantage", "scope:e2e", "--json")
 	assertStringAt(t, resolved, "status", "incomplete")
 	if candidates, ok := resolved["candidates"].([]any); !ok || len(candidates) != 1 || resolved["route"] != nil {
 		t.Fatalf("partial Resolve claimed an invalid unique result: %#v", resolved)

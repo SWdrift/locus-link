@@ -4,7 +4,7 @@
 
 ## 1. 总体结构与数据流
 
-当前构建带内嵌 Web UI 的 `locus.exe` 与不带页面资源的 `locus-backend.exe`；根 `VERSION` 和 Go ldflags 写入发布元数据，两者的 Cobra CLI 与 loopback Web API 共用 `internal/locus` Core，具体边界见[产物设计](design/产物设计.md)。声明保存在 YAML Registry 中，运行观测追加到本机 SQLite；Resolve 读取声明和既有 Observation，但不会主动 Probe。
+当前在 Windows 构建 `locus.exe`/`locus-backend.exe`，在 Linux 构建 `locus`/`locus-backend`；根 `VERSION` 和 Go ldflags 写入发布元数据，两种产物的 Cobra CLI 与 loopback Web API 共用 `internal/locus` Core。
 
 ```mermaid
 flowchart LR
@@ -92,8 +92,8 @@ CLI 的 Runtime Context builder 统一解析 current Entity、vantage 与该 bin
 CLI 输入为：
 
 - `<target>`：Entity local ref、规范 ID 或 Binding；
-- `--capability <name>`：与 Link `provides` 做精确字符串匹配；
-- `--from <entity>`：解析为 `RuntimeContext.CurrentEntity`，Resolve 必填；
+- `<capability>`：第二个 positional argument，与 Link `provides` 做精确字符串匹配；
+- `--from <entity>`：可选显式 origin 断言；省略时从候选 Route 第一条 Link 的 `from` 推导；
 - `--vantage <name>`：未提供时默认为 `host:<hostname>`；
 - Registry、Provider registry 和 SQLite Store：由 CLI 内部装配。
 - 可选 `--mechanism-bindings <path>`：覆盖当前 workstation 的 concrete executable/provider data；
@@ -165,27 +165,9 @@ stateDiagram-v2
 
 ## 6. 当前 CLI 清单
 
-除 help 外，根命令固定注册十五个内建子命令；结果型命令输出 JSON，`web` 启动长运行的本机 HTTP 服务。
+`0.2.0` 根命令执行 clean cutover：`resolve <target> <capability>`、`probe <link-or-route>`、`status [link-or-route]`、`context`、`graph`、`list`、`show`、`doctor`、`validate`、`refresh`、`migrate`、`init [--user]`、`project register|unregister|list`、`ui`、`version` 和 `completion`。`user init`、`web` 与 `--capability` 不再注册，也没有 alias 或转换路径。
 
-| 命令 | 当前行为 |
-|---|---|
-| `version` | 返回应用版本、唯一上一版本、State schema、commit 与 artifact kind |
-| `migrate` | 初始化空 State，或备份并迁移上一 State schema；当前 schema 幂等 no-op |
-| `user init` | 创建用户根 Registry |
-| `init` | 创建 Scope Registry，可选显式用户 import 与项目登记 |
-| `project register\|unregister\|list` | 管理本机项目反向登记 |
-| `refresh [alias-path]` | 生成 active/candidate Dependency Snapshot 与 diff；无回退时原子激活，回退时要求 `--allow-regression` |
-| `validate` | 加载并校验 Registry，返回活跃 Scope、三类对象数量与 partial diagnostics |
-| `context` | 返回 root discovery/registration/cache、Scope、imports、bindings、RuntimeContext 与 Observation Store 路径 |
-| `graph` | 返回 Scope、Import、Binding、Entity、Link、Route 与 provenance 的完整声明投影 |
-| `list [binding\|entity\|link\|route]` | 返回排序后的规范 ID |
-| `show <ref-or-id>` | 展开 Binding 或返回 Entity/Link/Route 声明，不附加运行时证据 |
-| `resolve <target> --capability <name>` | 按当前规则筛选显式 Route 并附加既有证据 |
-| `probe <link-or-route-id>` | 执行 safe probe 并追加 Observation |
-| `status [link-or-route-id]` | 查看最新 Link/Route evidence 或按状态汇总 |
-| `web` | 装载本机 Store，提供稳定 Locus 页面及 Scope 工作区；Catalog 展示用户根和项目登记，Dependency Graph 默认展示所选 Root 的完整多层本地/remote 快照并由筛选器派生子图，Graph/Status/Knowledge/Inspect 按可打开 Scope 深链，并保留 Resolve、显式 safe Probe、中英文、主题和 ELK operational graph |
-
-`context`、`resolve`、`probe`、`status` 需要 `--from`；`resolve` 还需要 `--capability`。四个命令都接受 `--vantage` 和 `--mechanism-bindings`，并复用同一个 Runtime Context builder。`web` 的同名 flags 是初始页面上下文；`web` 只允许 loopback `--address`。各命令可用 `--registry` 覆盖发现结果。
+Resolve、Probe 与指定 Link/Route 的 Status 在未给出 `--from` 时从声明第一条 Link 推导 origin；显式 `--from` 不一致会在 Probe 与 Observation 写入前拒绝。Context 和无参数 Status 在 current entity 未确定时仍可用。`ui` 只允许 loopback `--address`。各 Declared View 命令可用 `--registry` 覆盖 discovery。
 
 Web Status 对没有 current Entity 且没有 operational 声明的 Scope 返回空投影，不阻塞页面；每条 Link evidence 独立返回声明 Provider，Observation 缺失仍只表现为 `unknown`/“从未”。Dependency refresh 普通结果使用不参与布局的浮层消息，需要确认的回退 candidate 使用模态 diff。
 
