@@ -15,23 +15,15 @@ description: "使用环境中已安装的 locus CLI 发现当前 Registry、查�
 
 ## 标准工作流
 
-### 1. 确定当前 Entity
-
-如果用户已经给出当前 workstation/entity，直接使用它作为 `--from`。否则先查看声明：
+### 1. 读取 Runtime Context
 
 ```text
-locus list entity --json
+locus context --json
 ```
 
-从结果中选择有明确证据对应当前工作站的 Entity。存在多个合理候选时，不要猜测；向用户询问。
+先检查 Root、`completeness`、`blocked_imports`、默认 vantage 和 Provider tools。`current_entity` 未确定是正常状态；Resolve、Probe 和指定对象的 Status 会从声明推导 origin。只有存在多个 origin 时才要求用户选择。
 
-### 2. 读取 Runtime Context
-
-```text
-locus context --from <current-entity> --json
-```
-
-先检查：
+检查：
 
 - `root.root_origin` 与 `root.registry_path` 是否符合当前任务；
 - `active_scope`；
@@ -41,13 +33,10 @@ locus context --from <current-entity> --json
 
 如果 `completeness` 不是 `complete`，可以报告已发现信息，但不得把未发现对象或 Route 断言为不存在。
 
-### 3. 解析目标能力
+### 2. 解析目标能力
 
 ```text
-locus resolve <target> \
-  --capability <capability> \
-  --from <current-entity> \
-  --json
+locus resolve <target> <capability> --json
 ```
 
 需要隔离网络位置时显式传入：
@@ -84,7 +73,7 @@ locus list entity --json
 locus list link --json
 locus list route --json
 locus graph --json
-locus status [<link-or-route-id>] --from <current-entity> --json
+locus status [<link-or-route-id>] --json
 locus validate --json
 ```
 
@@ -99,7 +88,6 @@ Probe 会连接 endpoint、调用受限外部检查并追加 Observation，属�
 
 ```text
 locus probe <link-or-route-id> \
-  --from <current-entity> \
   --timeout <duration> \
   --json
 ```
@@ -136,7 +124,7 @@ locus refresh [alias-path] \
 以下命令会创建或修改本机 Locus 数据，不属于普通查询流程；仅在用户明确要求时执行：
 
 ```text
-locus user init --scope-id <id> --json
+locus init --user --scope-id <id> --json
 locus init --scope-id <id> [--import-user <alias>] [--register] --json
 locus project register --json
 locus project unregister <scope-id> --json

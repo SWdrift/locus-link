@@ -11,6 +11,7 @@ import (
 	"locus-link/internal/migration"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -35,12 +36,13 @@ type options struct {
 	Vantage                 string
 	MechanismBindings       string
 	Timeout                 string
-	Capability              string
+	User                    bool
 	ScopeID                 string
 	ImportUser              string
 	Register                bool
 	AllowRegression         bool
 	ExpectedCandidateDigest string
+	Explain                 bool
 	StatePath               string
 	BackupDir               string
 }
@@ -91,12 +93,14 @@ func (c *CLI) Run(args []string) int {
 	root.SetArgs(args)
 	err := root.Execute()
 	if state.result != nil {
-		encoder := json.NewEncoder(c.stdout)
-		if !state.json {
-			encoder.SetIndent("", "  ")
-		}
-		if encodeErr := encoder.Encode(state.result); encodeErr != nil {
-			fmt.Fprintln(c.stderr, encodeErr)
+		if state.json {
+			encoder := json.NewEncoder(c.stdout)
+			if encodeErr := encoder.Encode(withAdvice(state.result)); encodeErr != nil {
+				fmt.Fprintln(c.stderr, encodeErr)
+				return 1
+			}
+		} else if renderErr := writeHuman(c.stdout, state.result); renderErr != nil {
+			fmt.Fprintln(c.stderr, renderErr)
 			return 1
 		}
 	}
@@ -118,7 +122,7 @@ func (c *CLI) rootCommand(state *commandState) *cobra.Command {
 	}
 	root.SetOut(c.stdout)
 	root.SetErr(c.stderr)
-	root.CompletionOptions.DisableDefaultCmd = true
+	root.CompletionOptions.DisableDefaultCmd = false
 	root.PersistentFlags().BoolVar(&state.json, "json", false, "emit compact JSON")
 	root.AddGroup(
 		&cobra.Group{ID: coreGroup, Title: "Core workflow:"},
@@ -128,10 +132,11 @@ func (c *CLI) rootCommand(state *commandState) *cobra.Command {
 	root.AddCommand(
 		c.resolveCommand(state), c.probeCommand(state),
 		c.contextCommand(state), c.graphCommand(state), c.showCommand(state), c.listCommand(state), c.statusCommand(state),
-		c.versionCommand(state), c.initCommand(state), c.userCommand(state), c.projectCommand(state), c.refreshCommand(state),
-		c.validateCommand(state), c.migrateCommand(state),
+		c.versionCommand(state), c.initCommand(state), c.projectCommand(state), c.refreshCommand(state),
+		c.validateCommand(state), c.migrateCommand(state), c.doctorCommand(state),
 	)
 	root.AddCommand(c.extensions...)
+	root.InitDefaultCompletionCmd()
 	return root
 }
 
@@ -180,29 +185,15 @@ func (c *CLI) initCommand(state *commandState) *cobra.Command {
 	command := &cobra.Command{
 		Use: "init --scope-id <id>", Short: "Create a Scope registry", GroupID: authoringGroup, Args: exactArgs(0),
 		RunE: func(_ *cobra.Command, _ []string) error {
-			result, err := c.init(opts, false)
+			result, err := c.init(opts, opts.User)
 			return state.set(result, err)
 		},
 	}
 	addRegistryFlag(command, &opts)
 	command.Flags().StringVar(&opts.ScopeID, "scope-id", "", "canonical scope ID")
+	command.Flags().BoolVar(&opts.User, "user", false, "create the user Registry")
 	command.Flags().StringVar(&opts.ImportUser, "import-user", "", "alias for an explicit user Registry import")
 	command.Flags().BoolVar(&opts.Register, "register", false, "register the created project in the user Locus")
-	return command
-}
-
-func (c *CLI) userCommand(state *commandState) *cobra.Command {
-	command := &cobra.Command{Use: "user", Short: "Manage the user-level Locus", GroupID: authoringGroup}
-	var opts options
-	initCommand := &cobra.Command{
-		Use: "init --scope-id <id>", Short: "Create the user Registry", Args: exactArgs(0),
-		RunE: func(_ *cobra.Command, _ []string) error {
-			result, err := c.init(opts, true)
-			return state.set(result, err)
-		},
-	}
-	initCommand.Flags().StringVar(&opts.ScopeID, "scope-id", "", "canonical scope ID")
-	command.AddCommand(initCommand)
 	return command
 }
 
@@ -316,15 +307,16 @@ func (c *CLI) showCommand(state *commandState) *cobra.Command {
 func (c *CLI) resolveCommand(state *commandState) *cobra.Command {
 	var opts options
 	command := &cobra.Command{
-		Use: "resolve <target> --capability <name>", Short: "Resolve an explicit route and attach current evidence", GroupID: coreGroup, Args: exactArgs(1),
+		Use: "resolve <target> <capability>", Short: "Resolve an explicit route and attach current evidence", GroupID: coreGroup, Args: exactArgs(2),
 		RunE: func(_ *cobra.Command, args []string) error {
-			result, err := c.resolve(args[0], opts)
+			result, err := c.resolve(args[0], args[1], opts)
 			return state.set(result, err)
 		},
 	}
 	addRegistryFlag(command, &opts)
+	command.ValidArgsFunction = c.resolveCompletions(&opts)
 	addRuntimeFlags(command, &opts)
-	command.Flags().StringVar(&opts.Capability, "capability", "", "required capability")
+	command.Flags().BoolVar(&opts.Explain, "explain", false, "include deterministic resolution details")
 	return command
 }
 
@@ -337,6 +329,7 @@ func (c *CLI) probeCommand(state *commandState) *cobra.Command {
 			return state.set(result, err)
 		},
 	}
+	command.ValidArgsFunction = c.referenceCompletions(&opts, "link", "route")
 	addRegistryFlag(command, &opts)
 	addRuntimeFlags(command, &opts)
 	command.Flags().StringVar(&opts.Timeout, "timeout", "10s", "probe timeout")
@@ -352,6 +345,7 @@ func (c *CLI) statusCommand(state *commandState) *cobra.Command {
 			return state.set(result, err)
 		},
 	}
+	command.ValidArgsFunction = c.referenceCompletions(&opts, "link", "route")
 	addRegistryFlag(command, &opts)
 	addRuntimeFlags(command, &opts)
 	return command
@@ -646,10 +640,7 @@ func (c *CLI) show(opts options, inputRef string) (any, error) {
 	return result, nil
 }
 
-func (c *CLI) resolve(target string, opts options) (any, error) {
-	if opts.Capability == "" {
-		return nil, cliError{code: 2, err: errors.New("--capability is required")}
-	}
+func (c *CLI) resolve(target, capability string, opts options) (any, error) {
 	assembly, err := c.assembleRuntimeState(opts)
 	if err != nil {
 		return nil, cliError{code: 2, err: err}
@@ -659,20 +650,47 @@ func (c *CLI) resolve(target string, opts options) (any, error) {
 		return nil, err
 	}
 	defer store.Close()
-	result, err := assembly.registry.Resolve(context.Background(), target, opts.Capability, assembly.runtime, locus.NewProviders(), store)
+	result, err := assembly.registry.Resolve(context.Background(), target, capability, assembly.runtime, locus.NewProviders(), store)
 	if err != nil {
 		return nil, cliError{code: 2, err: err}
+	}
+	if opts.Explain {
+		routes := result.Candidates
+		if result.Route != nil {
+			routes = []locus.ResolvedRoute{*result.Route}
+		}
+		explanation := &locus.ResolveExplanation{
+			TargetResolution: result.Target,
+			Completeness:     string(result.Completeness),
+		}
+		originSet := map[string]bool{}
+		for _, route := range routes {
+			explanation.CandidateRoutes = append(explanation.CandidateRoutes, route.CanonicalID)
+			originSet[route.From] = true
+		}
+		for origin := range originSet {
+			explanation.Origins = append(explanation.Origins, origin)
+		}
+		sort.Strings(explanation.CandidateRoutes)
+		sort.Strings(explanation.Origins)
+		result.Explanation = explanation
 	}
 	if result.Status != "resolved" {
 		return result, cliError{code: 3, err: fmt.Errorf("resolve %s", result.Status)}
 	}
 	return result, nil
 }
-
 func (c *CLI) probe(parent context.Context, inputRef string, opts options) (any, error) {
 	assembly, err := c.assembleRuntimeState(opts)
 	if err != nil {
 		return nil, cliError{code: 2, err: err}
+	}
+	if assembly.runtime.CurrentEntity == "" {
+		origin, _, _, originErr := assembly.registry.DeclaredOrigin(inputRef)
+		if originErr != nil {
+			return nil, cliError{code: 2, err: originErr}
+		}
+		assembly.runtime.CurrentEntity = origin
 	}
 	timeout, err := time.ParseDuration(opts.Timeout)
 	if err != nil || timeout <= 0 {
@@ -790,4 +808,48 @@ func openDefaultStore() (*locus.Store, string, error) {
 func attachViewDiagnostics(result map[string]any, registry *locus.Registry) {
 	result["completeness"] = registry.Completeness
 	result["blocked_imports"] = registry.BlockedImports
+}
+
+func (c *CLI) referenceCompletions(opts *options, kinds ...string) cobra.CompletionFunc {
+	return func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		assembly, err := c.loadDeclarationState(*opts)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		var values []string
+		for _, kind := range kinds {
+			values = append(values, assembly.registry.ObjectIDs(kind)...)
+		}
+		sort.Strings(values)
+		return values, cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
+func (c *CLI) resolveCompletions(opts *options) cobra.CompletionFunc {
+	return func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+		assembly, err := c.loadDeclarationState(*opts)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+		if len(args) == 0 {
+			values := append(assembly.registry.ObjectIDs("binding"), assembly.registry.ObjectIDs("entity")...)
+			sort.Strings(values)
+			return values, cobra.ShellCompDirectiveNoFileComp
+		}
+		if len(args) == 1 {
+			set := map[string]bool{}
+			for _, link := range assembly.registry.Links {
+				for _, capability := range link.Provides {
+					set[capability] = true
+				}
+			}
+			values := make([]string, 0, len(set))
+			for capability := range set {
+				values = append(values, capability)
+			}
+			sort.Strings(values)
+			return values, cobra.ShellCompDirectiveNoFileComp
+		}
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
 }

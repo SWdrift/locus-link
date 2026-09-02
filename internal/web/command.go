@@ -10,12 +10,12 @@ import (
 func Command(stdout io.Writer, uiFactory UIFactory) *cobra.Command {
 	config := Config{}
 	command := &cobra.Command{
-		Use:   "web",
+		Use:   "ui",
 		Short: "Open the local Locus Web interface",
 		Args:  cobra.NoArgs,
 		RunE: func(command *cobra.Command, _ []string) error {
 			if command.Flags().Changed("json") {
-				return errors.New("--json is not supported by web")
+				return errors.New("--json is not supported by ui")
 			}
 			server, err := New(config, uiFactory)
 			if err != nil {

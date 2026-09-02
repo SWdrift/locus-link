@@ -23,6 +23,25 @@ type ProbeInputError struct {
 func (e ProbeInputError) Error() string { return e.Err.Error() }
 func (e ProbeInputError) Unwrap() error { return e.Err }
 
+func (r *Registry) DeclaredOrigin(inputRef string) (string, string, string, error) {
+	id, kind, err := r.ResolveAny(inputRef)
+	if err != nil {
+		return "", "", "", err
+	}
+	switch kind {
+	case "link":
+		return r.Links[id].From, id, kind, nil
+	case "route":
+		route := r.Routes[id]
+		if len(route.Steps) == 0 {
+			return "", "", "", errors.New("route requires at least one Link")
+		}
+		return r.Links[route.Steps[0].Link].From, id, kind, nil
+	default:
+		return "", "", "", errors.New("expected Link or Route")
+	}
+}
+
 func (r *Registry) Probe(ctx context.Context, inputRef string, runtime RuntimeContext, providers *Providers, store *Store) (ProbeResult, error) {
 	id, kind, err := r.ResolveAny(inputRef)
 	if err != nil {
