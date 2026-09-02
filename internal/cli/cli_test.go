@@ -3,8 +3,10 @@ package cli
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
+	"locus-link/internal/locus"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -99,10 +101,6 @@ func TestUserAndProjectAuthoringCommands(t *testing.T) {
 	if !ok || len(values) != 1 {
 		t.Fatalf("unexpected project list: %#v", projects)
 	}
-	var stdout, stderr bytes.Buffer
-	if code := NewCLI(&stdout, &stderr).Run([]string{"user", "init", "--scope-id", "scope.other", "--json"}); code != 2 || !strings.Contains(stderr.String(), "unknown command") {
-		t.Fatalf("legacy user init was not rejected: code=%d stderr=%s", code, stderr.String())
-	}
 }
 
 func TestCLI02CommandSurfaceAndInference(t *testing.T) {
@@ -135,17 +133,115 @@ func TestCLI02CommandSurfaceAndInference(t *testing.T) {
 	if route["from"] != "project.test::workstation" {
 		t.Fatalf("resolve omitted inferred origin: %#v", route)
 	}
-	code, _, stderr = runCLIResult(t, "resolve", "server", "--capability", "shell", "--registry", root, "--json")
-	if code != 2 || !strings.Contains(stderr, "unknown flag") {
-		t.Fatalf("legacy capability flag was accepted: code=%d stderr=%s", code, stderr)
-	}
-	code, _, stderr = runCLIResult(t, "web")
-	if code != 2 || !strings.Contains(stderr, "unknown command") {
-		t.Fatalf("legacy web command was accepted: code=%d stderr=%s", code, stderr)
+	code, _, stderr = runCLIResult(t, "resolve", "server", "--registry", root, "--json")
+	if code != 2 || !strings.Contains(stderr, "accepts 2 argument") {
+		t.Fatalf("missing positional capability was not validated: code=%d stderr=%s", code, stderr)
 	}
 	var completionOut, completionErr bytes.Buffer
 	if code := NewCLI(&completionOut, &completionErr).Run([]string{"completion", "bash"}); code != 0 || !strings.Contains(completionOut.String(), "__start_locus") {
 		t.Fatalf("bash completion failed: code=%d stderr=%s", code, completionErr.String())
+	}
+}
+
+func TestHumanResolveSummaryAndAdviceJSON(t *testing.T) {
+	base := workspaceTestPath(t, "cli-human-output")
+	if err := os.RemoveAll(base); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(base, "registry")
+	writeDeclarationTestRegistry(t, root)
+	t.Setenv("LOCUS_HOME", filepath.Join(base, "home"))
+	t.Setenv("LOCUS_STATE_PATH", filepath.Join(base, "state", "state.db"))
+
+	var stdout, stderr bytes.Buffer
+	code := NewCLI(&stdout, &stderr).Run([]string{"resolve", "server", "shell", "--registry", root})
+	if code != 0 {
+		t.Fatalf("human resolve exited %d: %s", code, stderr.String())
+	}
+	for _, expected := range []string{
+		"server → project.test::server",
+		"Route: project.test::shell",
+		"From: project.test::workstation",
+		"Evidence: unknown",
+		"1. project.test::connection",
+		"Next:\n  locus probe project.test::shell",
+	} {
+		if !strings.Contains(stdout.String(), expected) {
+			t.Fatalf("human output omitted %q:\n%s", expected, stdout.String())
+		}
+	}
+
+	code, result, cliErr := runCLIResult(t, "resolve", "server", "shell", "--registry", root, "--json")
+	if code != 0 {
+		t.Fatalf("JSON resolve exited %d: %s", code, cliErr)
+	}
+	diagnostics, ok := result["diagnostics"].([]any)
+	if !ok || len(diagnostics) != 1 || diagnostics[0].(map[string]any)["code"] != "evidence.unknown" {
+		t.Fatalf("unstable diagnostics: %#v", result)
+	}
+	actions, ok := result["next_actions"].([]any)
+	if !ok || len(actions) != 1 {
+		t.Fatalf("missing next action: %#v", result)
+	}
+	action := actions[0].(map[string]any)
+	if action["effect"] != "append_observation" || action["confirmation"] != "none" {
+		t.Fatalf("invalid action side-effect metadata: %#v", action)
+	}
+
+	var ambiguous bytes.Buffer
+	err := writeHuman(&ambiguous, locus.ResolveResult{
+		Status: "ambiguous", InputTarget: "server", Target: "project.test::server", Capability: "shell",
+		Candidates: []locus.ResolvedRoute{
+			{CanonicalID: "project.test::route-a", From: "project.test::workstation-a"},
+			{CanonicalID: "project.test::route-b", From: "project.test::workstation-b"},
+		},
+	})
+	if err != nil || !strings.Contains(ambiguous.String(), "Cannot infer an origin") ||
+		!strings.Contains(ambiguous.String(), "locus resolve server shell --from project.test::workstation-a") {
+		t.Fatalf("ambiguous human output:\n%s\nerror: %v", ambiguous.String(), err)
+	}
+
+	var partial bytes.Buffer
+	err = writeHuman(&partial, locus.ResolveResult{
+		Status: "incomplete", InputTarget: "server", Capability: "shell", Completeness: locus.Partial,
+		BlockedImports: []locus.BlockedImport{{SourceScopeID: "project.test", TargetScopeID: "environment.test", AliasPath: []string{"environment"}, Reason: "missing_active_cache"}},
+	})
+	if err != nil || !strings.Contains(partial.String(), "Declaration view: partial") ||
+		!strings.Contains(partial.String(), "locus refresh environment") {
+		t.Fatalf("partial human output:\n%s\nerror: %v", partial.String(), err)
+	}
+}
+
+func TestDoctorReadsStateWithoutModifyingIt(t *testing.T) {
+	base := workspaceTestPath(t, "cli-doctor-read-only")
+	if err := os.RemoveAll(base); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(base, "registry")
+	writeDeclarationTestRegistry(t, root)
+	statePath := filepath.Join(base, "state", "state.db")
+	t.Setenv("LOCUS_HOME", filepath.Join(base, "home"))
+	t.Setenv("LOCUS_STATE_PATH", statePath)
+	runInternalCLI(t, "migrate", "--state", statePath, "--json")
+	before, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	code, result, stderr := runCLIResult(t, "doctor", "--registry", root, "--json")
+	if code != 0 {
+		t.Fatalf("doctor exited %d: %s", code, stderr)
+	}
+	checks, ok := result["checks"].([]any)
+	if !ok || len(checks) != 5 {
+		t.Fatalf("doctor checks = %#v", result)
+	}
+	after, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sha256.Sum256(before) != sha256.Sum256(after) {
+		t.Fatal("doctor modified the State database")
 	}
 }
 

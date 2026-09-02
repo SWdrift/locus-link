@@ -63,8 +63,30 @@ func OpenStore(path string) (*Store, error) {
 	return &Store{db: db, path: path}, nil
 }
 
+func OpenStoreReadOnly(path string) (*Store, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(absolute)+"?mode=ro")
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return &Store{db: db, path: absolute}, nil
+}
+
 func (s *Store) Close() error { return s.db.Close() }
 func (s *Store) Path() string { return s.path }
+
+func (s *Store) SchemaVersion() (int, error) {
+	var version int
+	err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version)
+	return version, err
+}
 
 func (s *Store) Append(ctx context.Context, observation Observation) (Observation, error) {
 	evidence, err := json.Marshal(observation.Evidence)

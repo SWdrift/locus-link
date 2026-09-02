@@ -76,7 +76,7 @@ type runtimeStateAssembly struct {
 }
 
 func (s *commandState) set(result any, err error) error {
-	s.result = withAdvice(result)
+	s.result = result
 	if err == nil {
 		return nil
 	}
@@ -95,7 +95,7 @@ func (c *CLI) Run(args []string) int {
 	if state.result != nil {
 		if state.json {
 			encoder := json.NewEncoder(c.stdout)
-			if encodeErr := encoder.Encode(state.result); encodeErr != nil {
+			if encodeErr := encoder.Encode(withAdvice(state.result)); encodeErr != nil {
 				fmt.Fprintln(c.stderr, encodeErr)
 				return 1
 			}

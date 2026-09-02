@@ -52,7 +52,12 @@ func buildAdvice(result any) ([]Diagnostic, []NextAction) {
 		return resolveAdvice(value)
 	case locus.RefreshResult:
 		if value.Status == "confirmation_required" && value.CandidateSnapshot != nil {
-			return []Diagnostic{{Code: "refresh.regression", Severity: "warning", Subject: value.CandidateSnapshot.SnapshotDigest}}, nil
+			digest := value.CandidateSnapshot.SnapshotDigest
+			return []Diagnostic{{Code: "refresh.regression", Severity: "warning", Subject: digest, Message: "candidate would regress the active dependency view"}}, []NextAction{{
+				ID: "confirm-refresh", Label: "Activate the reviewed candidate", Reason: "dependency_regression",
+				Args:   []string{"refresh", "--allow-regression", "--expected-candidate-digest", digest},
+				Effect: "activate_cache", Confirmation: "required",
+			}}
 		}
 	}
 	return nil, nil
@@ -105,42 +110,71 @@ func joinAliasPath(path []string) string {
 }
 
 func writeHuman(output io.Writer, result any) error {
-	projection := withAdvice(result)
-	payload, ok := projection.(map[string]any)
-	if !ok {
-		_, err := fmt.Fprintln(output, projection)
-		return err
-	}
-	if status, ok := payload["status"].(string); ok {
-		fmt.Fprintf(output, "Status: %s\n", status)
-	}
-	if target, ok := payload["canonical_target"].(string); ok {
-		fmt.Fprintf(output, "Target: %s\n", target)
-	}
-	if route, ok := payload["route"].(map[string]any); ok {
-		fmt.Fprintf(output, "Route: %v\nFrom: %v\nEvidence: %v\n", route["canonical_id"], route["from"], route["evidence_status"])
-	}
-	if diagnostics, ok := payload["diagnostics"].([]Diagnostic); ok && len(diagnostics) != 0 {
-		fmt.Fprintf(output, "\nDiagnostic: %s\n", diagnostics[0].Code)
-	}
-	if actions, ok := payload["next_actions"].([]NextAction); ok && len(actions) != 0 {
-		fmt.Fprintln(output, "\nNext:")
-		for _, action := range actions {
-			fmt.Fprintf(output, "  locus")
-			for _, arg := range action.Args {
-				fmt.Fprintf(output, " %s", arg)
-			}
-			fmt.Fprintln(output)
+	switch value := result.(type) {
+	case locus.ResolveResult:
+		return writeHumanResolve(output, value)
+	case locus.RefreshResult:
+		fmt.Fprintf(output, "Refresh: %s\nDeclaration view: %s\n", value.Status, value.Completeness)
+		_, actions := buildAdvice(value)
+		return writeHumanActions(output, actions, "Next")
+	case doctorResult:
+		for _, check := range value.Checks {
+			fmt.Fprintf(output, "%-14s %-7s %s\n", check.Name, check.Status, check.Message)
 		}
-		return nil
+		return writeHumanActions(output, value.NextActions, "Suggested")
 	}
-	if _, shown := payload["status"]; shown {
-		return nil
-	}
-	encoded, err := json.MarshalIndent(payload, "", "  ")
+	payload, err := json.MarshalIndent(withAdvice(result), "", "  ")
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintln(output, string(encoded))
+	_, err = fmt.Fprintln(output, string(payload))
 	return err
+}
+
+func writeHumanResolve(output io.Writer, result locus.ResolveResult) error {
+	if result.Status == "ambiguous" {
+		fmt.Fprintf(output, "Cannot infer an origin for %s / %s.\n\nOrigins:\n", result.InputTarget, result.Capability)
+		for _, route := range result.Candidates {
+			fmt.Fprintf(output, "  %-32s %s\n", route.From, route.CanonicalID)
+		}
+		_, actions := buildAdvice(result)
+		return writeHumanActions(output, actions, "Choose one")
+	}
+	if result.Status == "incomplete" {
+		fmt.Fprintln(output, "Declaration view: partial")
+		if len(result.BlockedImports) != 0 {
+			blocked := result.BlockedImports[0]
+			fmt.Fprintf(output, "\nBlocked import:\n  %s\n  Owner: %s\n  Expected scope: %s\n  Reason: %s\n",
+				joinAliasPath(blocked.AliasPath), blocked.SourceScopeID, blocked.TargetScopeID, blocked.Reason)
+		}
+		_, actions := buildAdvice(result)
+		return writeHumanActions(output, actions, "Fetch explicitly")
+	}
+	if result.Status != "resolved" || result.Route == nil {
+		fmt.Fprintf(output, "No declared route matches %s / %s.\n", result.InputTarget, result.Capability)
+		return nil
+	}
+	route := result.Route
+	fmt.Fprintf(output, "%s → %s\nRoute: %s\nFrom: %s\nEvidence: %s\n\n",
+		result.InputTarget, result.Target, route.CanonicalID, route.From, route.EvidenceStatus)
+	for index, step := range route.Steps {
+		fmt.Fprintf(output, "  %d. %-40s %s\n", index+1, step.LinkID, step.Provider)
+	}
+	_, actions := buildAdvice(result)
+	return writeHumanActions(output, actions, "Next")
+}
+
+func writeHumanActions(output io.Writer, actions []NextAction, heading string) error {
+	if len(actions) == 0 {
+		return nil
+	}
+	fmt.Fprintf(output, "\n%s:\n", heading)
+	for _, action := range actions {
+		fmt.Fprint(output, "  locus")
+		for _, arg := range action.Args {
+			fmt.Fprintf(output, " %s", arg)
+		}
+		fmt.Fprintln(output)
+	}
+	return nil
 }
