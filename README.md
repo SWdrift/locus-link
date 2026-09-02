@@ -13,7 +13,7 @@ locus-link 不执行 Route 本身。它不会建立 FRP tunnel、SSH session 或
 在包含 `.locus/registry` 的项目或其子目录中：
 
 ```text
-locus resolve production-host shell --from workstation.dev-a --vantage office-lan
+locus resolve production-host shell
 ```
 
 `resolve` 查找符合目标、能力和当前现场的已声明 Route，并返回有序 Link、底层调用信息、文档引用和当前可用的探测证据。
@@ -21,8 +21,8 @@ locus resolve production-host shell --from workstation.dev-a --vantage office-la
 需要更新证据时：
 
 ```text
-locus probe route.prod-shell --from workstation.dev-a --vantage office-lan
-locus resolve production-host shell --from workstation.dev-a --vantage office-lan
+locus probe route.prod-shell
+locus resolve production-host shell
 ```
 
 基本使用方式是：
@@ -33,7 +33,7 @@ resolve → probe（需要时）→ resolve
 
 `resolve` 是只读操作，不会隐式 Probe。`probe` 测量指定 Link 或 Route 中的 Link，并追加 Observation，不执行 Route 所描述的实际操作。
 
-`--from` 表示本次操作从哪个 Entity 出发；`--vantage` 表示本次网络观测所在的位置。
+`resolve`、`probe` 和指定对象的 `status` 会从声明的 Link 或 Route 推导起点。只有存在多个可行起点时才需要使用 `--from <entity>` 明确选择；`--vantage` 省略时使用当前主机的默认值。
 
 ![Web UI Graph](public/3.Graph.png)
 
